@@ -1,18 +1,22 @@
+use projectairsim::error::SimError;
 use projectairsim::protocol::{
     FrameType, RawDataPayload, RequestEnvelope, ResponseDecoder, TopicFrame, TopicInfo,
 };
 use projectairsim::transport::MockTransport;
-use projectairsim::error::SimError;
 use serde::{Deserialize, Serialize};
 
 #[test]
 fn test_topic_frame_roundtrip() {
-    let frame = TopicFrame::subscribe("/Sim/SceneBasicDrone/robots/Drone1/sensors/Chase/scene_camera");
+    let frame =
+        TopicFrame::subscribe("/Sim/SceneBasicDrone/robots/Drone1/sensors/Chase/scene_camera");
     let bytes = frame.to_bytes().expect("serialization failed");
 
     let decoded = TopicFrame::from_bytes(&bytes).expect("deserialization failed");
     assert_eq!(decoded.0, FrameType::Subscribe);
-    assert_eq!(decoded.1, "/Sim/SceneBasicDrone/robots/Drone1/sensors/Chase/scene_camera");
+    assert_eq!(
+        decoded.1,
+        "/Sim/SceneBasicDrone/robots/Drone1/sensors/Chase/scene_camera"
+    );
     assert!(decoded.2.is_empty());
 }
 
@@ -55,7 +59,8 @@ struct TakeoffParams {
 #[test]
 fn test_request_envelope_msgpack_json_format() {
     let params = TakeoffParams { timeout_sec: 20.0 };
-    let req = RequestEnvelope::new(42, "/Sim/Drone1/Takeoff", &params).expect("request packaging failed");
+    let req =
+        RequestEnvelope::new(42, "/Sim/Drone1/Takeoff", &params).expect("request packaging failed");
 
     let bytes = req.to_bytes().expect("serialization failed");
 
@@ -71,7 +76,8 @@ fn test_request_envelope_msgpack_json_format() {
     });
 
     // Verify params.data can be unpacked back into TakeoffParams
-    let unpacked_params: TakeoffParams = rmp_serde::from_slice(&req.params.data).expect("inner params decode failed");
+    let unpacked_params: TakeoffParams =
+        rmp_serde::from_slice(&req.params.data).expect("inner params decode failed");
     assert_eq!(unpacked_params.timeout_sec, 20.0);
 }
 
@@ -146,7 +152,10 @@ async fn test_mock_transport_request_response() {
 
     // Send dummy request
     let req_bytes = vec![1, 2, 3];
-    let resp = transport.send_request(&req_bytes).await.expect("transport send failed");
+    let resp = transport
+        .send_request(&req_bytes)
+        .await
+        .expect("transport send failed");
 
     // Verify request was recorded
     assert_eq!(transport.sent_requests(), vec![req_bytes]);
@@ -174,7 +183,9 @@ fn test_mock_transport_request_response_sync() {
 
     // Send dummy request
     let req_bytes = vec![1, 2, 3];
-    let resp = transport.send_request_sync(&req_bytes).expect("transport send failed");
+    let resp = transport
+        .send_request_sync(&req_bytes)
+        .expect("transport send failed");
 
     // Verify request was recorded
     assert_eq!(transport.sent_requests(), vec![req_bytes]);

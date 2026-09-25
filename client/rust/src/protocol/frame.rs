@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::error::{Result, SimError};
+use serde::{Deserialize, Serialize};
 
 /// Message frame type for ProjectAirSim topic streaming (Port 8989).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -49,13 +49,15 @@ impl TopicFrame {
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        rmp_serde::to_vec(self)
-            .map_err(|e| SimError::SerializationError(format!("Failed to serialize TopicFrame: {e}")))
+        rmp_serde::to_vec(self).map_err(|e| {
+            SimError::SerializationError(format!("Failed to serialize TopicFrame: {e}"))
+        })
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        rmp_serde::from_slice(bytes)
-            .map_err(|e| SimError::SerializationError(format!("Failed to deserialize TopicFrame: {e}")))
+        rmp_serde::from_slice(bytes).map_err(|e| {
+            SimError::SerializationError(format!("Failed to deserialize TopicFrame: {e}"))
+        })
     }
 }
 

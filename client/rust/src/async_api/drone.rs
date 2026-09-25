@@ -54,7 +54,11 @@ struct EmptyParams {}
 
 impl Drone {
     /// Creates a new Drone handle.
-    pub fn new(client: Client, drone_name: impl Into<String>, parent_topic: impl Into<String>) -> Self {
+    pub fn new(
+        client: Client,
+        drone_name: impl Into<String>,
+        parent_topic: impl Into<String>,
+    ) -> Self {
         Self {
             client,
             drone_name: drone_name.into(),
@@ -77,52 +81,71 @@ impl Drone {
     /// Requests API control over the vehicle.
     pub async fn enable_api_control(&self) -> Result<bool> {
         info!("Enabling API control for drone '{}'", self.drone_name);
-        self.client.request(&self.method_path("EnableApiControl"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("EnableApiControl"), &EmptyParams {})
+            .await
     }
 
     /// Releases API control back to RC/manual or onboard autonomy.
     pub async fn disable_api_control(&self) -> Result<bool> {
         info!("Disabling API control for drone '{}'", self.drone_name);
-        self.client.request(&self.method_path("DisableApiControl"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("DisableApiControl"), &EmptyParams {})
+            .await
     }
 
     /// Checks if API control is currently granted.
     pub async fn is_api_control_enabled(&self) -> Result<bool> {
-        self.client.request(&self.method_path("IsApiControlEnabled"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("IsApiControlEnabled"), &EmptyParams {})
+            .await
     }
 
     /// Arms the drone's motors.
     pub async fn arm(&self) -> Result<bool> {
         info!("Arming drone '{}'", self.drone_name);
-        self.client.request(&self.method_path("Arm"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("Arm"), &EmptyParams {})
+            .await
     }
 
     /// Disarms the drone's motors.
     pub async fn disarm(&self) -> Result<bool> {
         info!("Disarming drone '{}'", self.drone_name);
-        self.client.request(&self.method_path("Disarm"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("Disarm"), &EmptyParams {})
+            .await
     }
 
     /// Checks if the drone passes all pre-flight checks and can arm.
     pub async fn can_arm(&self) -> Result<bool> {
-        self.client.request(&self.method_path("CanArm"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("CanArm"), &EmptyParams {})
+            .await
     }
 
     /// Retrieves readiness state.
     pub async fn get_ready_state(&self) -> Result<ReadyState> {
-        self.client.request(&self.method_path("GetReadyState"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("GetReadyState"), &EmptyParams {})
+            .await
     }
 
     /// Retrieves current landed state (Landed, Airborne, Unknown).
     pub async fn get_landed_state(&self) -> Result<LandedState> {
-        self.client.request(&self.method_path("GetLandedState"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("GetLandedState"), &EmptyParams {})
+            .await
     }
 
     // --- Flight Operations ---
 
     /// Commands the drone to take off and hover at default takeoff altitude.
     pub async fn takeoff(&self, timeout_sec: f32) -> Result<bool> {
-        info!("Commanding takeoff for drone '{}' (timeout: {}s)", self.drone_name, timeout_sec);
+        info!(
+            "Commanding takeoff for drone '{}' (timeout: {}s)",
+            self.drone_name, timeout_sec
+        );
         self.client
             .request(&self.method_path("Takeoff"), &TimeoutParams { timeout_sec })
             .await
@@ -138,7 +161,9 @@ impl Drone {
 
     /// Commands the drone to hold position and hover in place.
     pub async fn hover(&self) -> Result<bool> {
-        self.client.request(&self.method_path("Hover"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("Hover"), &EmptyParams {})
+            .await
     }
 
     /// Commands the drone to return to home/launch coordinates.
@@ -149,7 +174,13 @@ impl Drone {
     }
 
     /// Commands velocity in the world frame (North, East, Down in m/s).
-    pub async fn move_by_velocity(&self, vx: f64, vy: f64, vz: f64, duration_sec: f64) -> Result<bool> {
+    pub async fn move_by_velocity(
+        &self,
+        vx: f64,
+        vy: f64,
+        vz: f64,
+        duration_sec: f64,
+    ) -> Result<bool> {
         self.client
             .request(
                 &self.method_path("MoveByVelocity"),
@@ -198,11 +229,17 @@ impl Drone {
 
     /// Queries the ground-truth 6-DoF pose of the drone.
     pub async fn get_ground_truth_pose(&self) -> Result<Pose> {
-        self.client.request(&self.method_path("GetGroundTruthPose"), &EmptyParams {}).await
+        self.client
+            .request(&self.method_path("GetGroundTruthPose"), &EmptyParams {})
+            .await
     }
 
     /// Captures images from a named onboard camera.
-    pub async fn get_images(&self, camera_id: &str, image_types: &[ImageType]) -> Result<Vec<ImageResponse>> {
+    pub async fn get_images(
+        &self,
+        camera_id: &str,
+        image_types: &[ImageType],
+    ) -> Result<Vec<ImageResponse>> {
         let type_ids: Vec<i32> = image_types.iter().map(|t| *t as i32).collect();
         self.client
             .request(

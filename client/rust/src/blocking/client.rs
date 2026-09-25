@@ -1,7 +1,7 @@
+use serde::{de::DeserializeOwned, Serialize};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::Arc;
-use serde::{de::DeserializeOwned, Serialize};
 use tracing::info;
 
 use crate::blocking::async_result::AsyncResult;
@@ -107,8 +107,9 @@ impl Client {
 
     /// Publishes a typed MessagePack payload to a simulation topic.
     pub fn publish<T: Serialize>(&self, topic: &str, message: &T) -> Result<()> {
-        let body = rmp_serde::to_vec(message)
-            .map_err(|e| SimError::SerializationError(format!("Failed to serialize publish payload: {e}")))?;
+        let body = rmp_serde::to_vec(message).map_err(|e| {
+            SimError::SerializationError(format!("Failed to serialize publish payload: {e}"))
+        })?;
         let frame = TopicFrame::message(topic, body).to_bytes()?;
         self.transport.send_topic_frame_sync(&frame)
     }

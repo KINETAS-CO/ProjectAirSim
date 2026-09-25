@@ -1,7 +1,7 @@
+use super::Transport;
+use crate::error::{Result, SimError};
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use crate::error::{Result, SimError};
-use super::Transport;
 
 /// In-memory mock transport mirroring C++ FakeNNGI.
 ///
@@ -62,7 +62,10 @@ impl Transport for MockTransport {
 
     #[cfg(feature = "async")]
     async fn send_topic_frame(&self, frame_bytes: &[u8]) -> Result<()> {
-        self.sent_topic_frames.lock().unwrap().push(frame_bytes.to_vec());
+        self.sent_topic_frames
+            .lock()
+            .unwrap()
+            .push(frame_bytes.to_vec());
         Ok(())
     }
 
@@ -83,7 +86,10 @@ impl Transport for MockTransport {
 
     #[cfg(feature = "sync")]
     fn send_topic_frame_sync(&self, frame_bytes: &[u8]) -> Result<()> {
-        self.sent_topic_frames.lock().unwrap().push(frame_bytes.to_vec());
+        self.sent_topic_frames
+            .lock()
+            .unwrap()
+            .push(frame_bytes.to_vec());
         Ok(())
     }
 

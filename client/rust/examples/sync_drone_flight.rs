@@ -5,8 +5,8 @@
 //! cargo run --example sync_drone_flight --features sync
 //! ```
 
-use std::time::Duration;
 use projectairsim::blocking::{AsyncResult, Client, World};
+use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();

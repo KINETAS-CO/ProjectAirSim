@@ -33,7 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     drone.takeoff(15.0).await?;
 
     println!("Subscribing to real-time ground truth pose telemetry...");
-    let mut pose_sub = drone.subscribe_telemetry("robot_info/ground_truth_pose").await?;
+    let mut pose_sub = drone
+        .subscribe_telemetry("robot_info/ground_truth_pose")
+        .await?;
 
     // Spawn telemetry reader task
     let telemetry_task = tokio::spawn(async move {

@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use tracing::{debug, warn};
@@ -92,7 +92,9 @@ impl NngActor {
                                 Ok(frame) => {
                                     // If this is the topics directory, update the topic list cache
                                     if frame.topic() == "/$topics" {
-                                        if let Ok(infos) = rmp_serde::from_slice::<Vec<TopicInfo>>(frame.body()) {
+                                        if let Ok(infos) =
+                                            rmp_serde::from_slice::<Vec<TopicInfo>>(frame.body())
+                                        {
                                             if let Ok(mut lock) = topic_info_cache.try_write() {
                                                 *lock = infos;
                                             }
@@ -142,7 +144,9 @@ impl NngActor {
     /// Asynchronously dispatches an RPC request buffer and awaits the response.
     pub async fn send_rpc(&self, payload: Vec<u8>) -> Result<Vec<u8>> {
         if payload.is_empty() {
-            return Err(SimError::ProtocolError("Cannot send empty RPC payload".into()));
+            return Err(SimError::ProtocolError(
+                "Cannot send empty RPC payload".into(),
+            ));
         }
         if !self.is_running.load(Ordering::Relaxed) {
             return Err(SimError::ConnectionClosed);
@@ -157,9 +161,7 @@ impl NngActor {
             .await
             .map_err(|_| SimError::ConnectionClosed)?;
 
-        reply_rx
-            .await
-            .map_err(|_| SimError::Cancelled)?
+        reply_rx.await.map_err(|_| SimError::Cancelled)?
     }
 
     /// Asynchronously sends an outgoing topic frame (e.g. Subscribe, Unsubscribe, Publish).

@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::error::{Result, SimError};
+use serde::{Deserialize, Serialize};
 
 /// Encapsulates binary-packed parameters inside the `{"data": bytes}` map
 /// required by ProjectAirSim's MSGPACK_JSON protocol.
@@ -21,13 +21,16 @@ pub struct RequestEnvelope<'a> {
 impl<'a> RequestEnvelope<'a> {
     /// Creates a new request envelope with version 1.0 and MessagePack-encoded parameters.
     pub fn new<P: Serialize>(id: i32, method: &'a str, params: &P) -> Result<Self> {
-        let packed_params = rmp_serde::to_vec_named(params)
-            .map_err(|e| SimError::SerializationError(format!("Failed to pack request params: {e}")))?;
+        let packed_params = rmp_serde::to_vec_named(params).map_err(|e| {
+            SimError::SerializationError(format!("Failed to pack request params: {e}"))
+        })?;
 
         Ok(Self {
             id,
             method,
-            params: RawDataPayload { data: packed_params },
+            params: RawDataPayload {
+                data: packed_params,
+            },
             version: 1.0,
         })
     }
@@ -44,7 +47,8 @@ impl<'a> RequestEnvelope<'a> {
 
     /// Serializes the entire envelope into MSGPACK_JSON wire bytes.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        rmp_serde::to_vec_named(self)
-            .map_err(|e| SimError::SerializationError(format!("Failed to serialize RequestEnvelope: {e}")))
+        rmp_serde::to_vec_named(self).map_err(|e| {
+            SimError::SerializationError(format!("Failed to serialize RequestEnvelope: {e}"))
+        })
     }
 }

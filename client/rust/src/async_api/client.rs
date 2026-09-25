@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI32, Ordering};
 use serde::{de::DeserializeOwned, Serialize};
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::info;
 
@@ -43,8 +43,9 @@ impl TopicSubscription {
     /// Asynchronously awaits the next typed MessagePack message on this topic.
     pub async fn recv_typed<T: DeserializeOwned>(&mut self) -> Result<T> {
         let bytes = self.recv().await?;
-        rmp_serde::from_slice(&bytes)
-            .map_err(|e| SimError::SerializationError(format!("Failed to deserialize topic message: {e}")))
+        rmp_serde::from_slice(&bytes).map_err(|e| {
+            SimError::SerializationError(format!("Failed to deserialize topic message: {e}"))
+        })
     }
 }
 
@@ -62,7 +63,11 @@ impl Client {
     }
 
     /// Connects to a ProjectAirSim simulation server with specified ports.
-    pub async fn connect_with_ports(address: &str, port_topics: u16, port_services: u16) -> Result<Self> {
+    pub async fn connect_with_ports(
+        address: &str,
+        port_topics: u16,
+        port_services: u16,
+    ) -> Result<Self> {
         info!("Connecting to ProjectAirSim at {address} (topics: {port_topics}, services: {port_services})");
         let actor = NngActor::start(address, port_topics, port_services)?;
         Ok(Self {
@@ -80,7 +85,11 @@ impl Client {
     }
 
     /// Dispatches a typed RPC method call to the simulation server and deserializes the typed response.
-    pub async fn request<P: Serialize, R: DeserializeOwned>(&self, method: &str, params: &P) -> Result<R> {
+    pub async fn request<P: Serialize, R: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: &P,
+    ) -> Result<R> {
         let id = self.request_id.fetch_add(1, Ordering::Relaxed);
         let req = RequestEnvelope::new(id, method, params)?;
         let req_bytes = req.to_bytes()?;
@@ -132,8 +141,9 @@ impl Client {
 
     /// Publishes a typed MessagePack payload to a simulation topic.
     pub async fn publish<T: Serialize>(&self, topic: &str, message: &T) -> Result<()> {
-        let body = rmp_serde::to_vec(message)
-            .map_err(|e| SimError::SerializationError(format!("Failed to serialize publish payload: {e}")))?;
+        let body = rmp_serde::to_vec(message).map_err(|e| {
+            SimError::SerializationError(format!("Failed to serialize publish payload: {e}"))
+        })?;
         self.publish_raw(topic, body).await
     }
 
@@ -164,6 +174,7 @@ impl Client {
     pub async fn get_build_commit_hash(&self) -> Result<String> {
         #[derive(Serialize)]
         struct EmptyParams {}
-        self.request("/Sim/GetBuildCommitHash", &EmptyParams {}).await
+        self.request("/Sim/GetBuildCommitHash", &EmptyParams {})
+            .await
     }
 }

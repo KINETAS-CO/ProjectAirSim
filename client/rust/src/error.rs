@@ -64,4 +64,10 @@ impl SimError {
     }
 }
 
+impl From<serde_json::Error> for SimError {
+    fn from(err: serde_json::Error) -> Self {
+        SimError::SerializationError(err.to_string())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, SimError>;

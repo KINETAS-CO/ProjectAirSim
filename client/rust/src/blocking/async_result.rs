@@ -1,6 +1,6 @@
+use crate::error::{Result, SimError};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
-use crate::error::{Result, SimError};
 
 /// Synchronization handle for asynchronous operations initiated in blocking mode.
 ///

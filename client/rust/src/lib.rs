@@ -15,15 +15,19 @@ pub mod async_api;
 pub mod blocking;
 
 pub use error::{Result, SimError, Status};
-pub use protocol::{FrameType, RawResponseEnvelope, RequestEnvelope, ResponseDecoder, TopicFrame, TopicInfo};
+pub use protocol::{
+    FrameType, RawResponseEnvelope, RequestEnvelope, ResponseDecoder, TopicFrame, TopicInfo,
+};
 pub use transport::{MockTransport, NngTransport, Transport};
 pub use types::*;
 
 #[cfg(feature = "async")]
-pub use async_api::{Client, Drone, TopicSubscription, World};
+pub use async_api::{
+    Client, Drone, EnvActor, Rover, StaticSensorActor, TopicSubscription, WheeledVehicle, World,
+};
 
 #[cfg(feature = "sync")]
 pub use blocking::AsyncResult;
 
 #[cfg(all(feature = "sync", not(feature = "async")))]
-pub use blocking::{Client, Drone, World};
+pub use blocking::{Client, Drone, EnvActor, Rover, StaticSensorActor, WheeledVehicle, World};

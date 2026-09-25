@@ -61,14 +61,24 @@ impl World {
 
         if let Some(config_str) = scene_config {
             let content = if std::path::Path::new(config_str).exists() {
-                std::fs::read_to_string(config_str)
-                    .map_err(|e| SimError::SerializationError(format!("Failed to read scene config file {config_str}: {e}")))?
+                std::fs::read_to_string(config_str).map_err(|e| {
+                    SimError::SerializationError(format!(
+                        "Failed to read scene config file {config_str}: {e}"
+                    ))
+                })?
             } else {
                 config_str.to_string()
             };
 
             info!("Loading scene into ProjectAirSim server...");
-            let _res: serde_json::Value = client.request("/Sim/LoadScene", &LoadSceneParams { scene_config: &content }).await?;
+            let _res: serde_json::Value = client
+                .request(
+                    "/Sim/LoadScene",
+                    &LoadSceneParams {
+                        scene_config: &content,
+                    },
+                )
+                .await?;
             info!("Scene loaded successfully");
 
             // Parse json if possible to discover drones and metadata
@@ -150,7 +160,9 @@ impl World {
 
     /// Retrieves current simulation time in nanoseconds.
     pub async fn get_sim_time(&self) -> Result<i64> {
-        self.client.request("/Sim/GetSimTime", &EmptyParams {}).await
+        self.client
+            .request("/Sim/GetSimTime", &EmptyParams {})
+            .await
     }
 
     // --- Weather & Environment ---
@@ -171,14 +183,18 @@ impl World {
 
     /// Retrieves current wind velocity in m/s.
     pub async fn get_wind(&self) -> Result<Vector3> {
-        self.client.request("/Sim/GetWindVelocity", &EmptyParams {}).await
+        self.client
+            .request("/Sim/GetWindVelocity", &EmptyParams {})
+            .await
     }
 
     // --- Objects & Actors ---
 
     /// Lists all actor entities in the current scene.
     pub async fn list_actors(&self) -> Result<Vec<String>> {
-        self.client.request("/Sim/ListActors", &EmptyParams {}).await
+        self.client
+            .request("/Sim/ListActors", &EmptyParams {})
+            .await
     }
 
     /// Retrieves the 6-DoF pose of a named scene object.
@@ -189,7 +205,12 @@ impl World {
     }
 
     /// Sets the pose of a named scene object, optionally teleporting without physics collision.
-    pub async fn set_object_pose(&self, object_name: &str, pose: Pose, teleport: bool) -> Result<bool> {
+    pub async fn set_object_pose(
+        &self,
+        object_name: &str,
+        pose: Pose,
+        teleport: bool,
+    ) -> Result<bool> {
         self.client
             .request(
                 "/Sim/SetObjectPose",
@@ -205,5 +226,43 @@ impl World {
     /// Returns a Drone handle attached to this simulation world.
     pub fn get_drone(&self, name: impl Into<String>) -> Drone {
         Drone::new(self.client.clone(), name, self.parent_topic.clone())
+    }
+
+    /// Returns a Rover handle attached to this simulation world.
+    pub fn get_rover(&self, name: impl Into<String>) -> crate::async_api::rover::Rover {
+        crate::async_api::rover::Rover::new(self.client.clone(), name, self.parent_topic.clone())
+    }
+
+    /// Returns a WheeledVehicle handle attached to this simulation world.
+    pub fn get_wheeled_vehicle(
+        &self,
+        name: impl Into<String>,
+    ) -> crate::async_api::wheeled_vehicle::WheeledVehicle {
+        crate::async_api::wheeled_vehicle::WheeledVehicle::new(
+            self.client.clone(),
+            name,
+            self.parent_topic.clone(),
+        )
+    }
+
+    /// Returns an EnvActor handle attached to this simulation world.
+    pub fn get_env_actor(&self, name: impl Into<String>) -> crate::async_api::env_actor::EnvActor {
+        crate::async_api::env_actor::EnvActor::new(
+            self.client.clone(),
+            name,
+            self.parent_topic.clone(),
+        )
+    }
+
+    /// Returns a StaticSensorActor handle attached to this simulation world.
+    pub fn get_static_sensor(
+        &self,
+        name: impl Into<String>,
+    ) -> crate::async_api::static_sensor::StaticSensorActor {
+        crate::async_api::static_sensor::StaticSensorActor::new(
+            self.client.clone(),
+            name,
+            self.parent_topic.clone(),
+        )
     }
 }

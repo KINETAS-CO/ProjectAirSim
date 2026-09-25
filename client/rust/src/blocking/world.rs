@@ -57,14 +57,22 @@ impl World {
 
         if let Some(config_str) = scene_config {
             let content = if std::path::Path::new(config_str).exists() {
-                std::fs::read_to_string(config_str)
-                    .map_err(|e| SimError::SerializationError(format!("Failed to read scene config file {config_str}: {e}")))?
+                std::fs::read_to_string(config_str).map_err(|e| {
+                    SimError::SerializationError(format!(
+                        "Failed to read scene config file {config_str}: {e}"
+                    ))
+                })?
             } else {
                 config_str.to_string()
             };
 
             info!("Loading scene into ProjectAirSim server...");
-            let _res: serde_json::Value = client.request("/Sim/LoadScene", &LoadSceneParams { scene_config: &content })?;
+            let _res: serde_json::Value = client.request(
+                "/Sim/LoadScene",
+                &LoadSceneParams {
+                    scene_config: &content,
+                },
+            )?;
             info!("Scene loaded successfully");
 
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -179,7 +187,8 @@ impl World {
 
     /// Retrieves the 6-DoF pose of a named scene object.
     pub fn get_object_pose(&self, object_name: &str) -> Result<Pose> {
-        self.client.request("/Sim/GetObjectPose", &ObjectNameParams { object_name })
+        self.client
+            .request("/Sim/GetObjectPose", &ObjectNameParams { object_name })
     }
 
     /// Sets the pose of a named scene object, optionally teleporting without physics collision.
@@ -191,6 +200,44 @@ impl World {
                 pose,
                 teleport,
             },
+        )
+    }
+
+    /// Returns a Rover handle attached to this simulation world.
+    pub fn get_rover(&self, name: impl Into<String>) -> crate::blocking::rover::Rover {
+        crate::blocking::rover::Rover::new(self.client.clone(), name, self.parent_topic.clone())
+    }
+
+    /// Returns a WheeledVehicle handle attached to this simulation world.
+    pub fn get_wheeled_vehicle(
+        &self,
+        name: impl Into<String>,
+    ) -> crate::blocking::wheeled_vehicle::WheeledVehicle {
+        crate::blocking::wheeled_vehicle::WheeledVehicle::new(
+            self.client.clone(),
+            name,
+            self.parent_topic.clone(),
+        )
+    }
+
+    /// Returns an EnvActor handle attached to this simulation world.
+    pub fn get_env_actor(&self, name: impl Into<String>) -> crate::blocking::env_actor::EnvActor {
+        crate::blocking::env_actor::EnvActor::new(
+            self.client.clone(),
+            name,
+            self.parent_topic.clone(),
+        )
+    }
+
+    /// Returns a StaticSensorActor handle attached to this simulation world.
+    pub fn get_static_sensor(
+        &self,
+        name: impl Into<String>,
+    ) -> crate::blocking::static_sensor::StaticSensorActor {
+        crate::blocking::static_sensor::StaticSensorActor::new(
+            self.client.clone(),
+            name,
+            self.parent_topic.clone(),
         )
     }
 }

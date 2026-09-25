@@ -1,10 +1,10 @@
 #![cfg(feature = "sync")]
 
-use std::time::Duration;
 use nng::{Protocol, Socket};
 use projectairsim::blocking::{AsyncResult, Client, Drone, World};
 use projectairsim::protocol::request::RawDataPayload;
 use projectairsim::protocol::response::RawResponseEnvelope;
+use std::time::Duration;
 
 #[test]
 fn test_async_result_mechanics() {
@@ -28,17 +28,22 @@ fn test_blocking_client_rpc_and_drone() {
 
     // Start mock server sockets
     let rep_socket = Socket::new(Protocol::Rep0).expect("failed to open Rep0 socket");
-    rep_socket.listen(&rep_url).expect("failed to listen on Rep0");
+    rep_socket
+        .listen(&rep_url)
+        .expect("failed to listen on Rep0");
 
     let pair_server = Socket::new(Protocol::Pair0).expect("failed to open Pair0 socket");
-    pair_server.listen(&pair_url).expect("failed to listen on Pair0");
+    pair_server
+        .listen(&pair_url)
+        .expect("failed to listen on Pair0");
 
     // Server worker thread
     let server_thread = std::thread::spawn(move || {
         // Handle 3 requests: /Sim/Ping, /Sim/Drone1/EnableApiControl, /Sim/Drone1/Takeoff
         for _ in 0..3 {
             if let Ok(msg) = rep_socket.recv() {
-                let req: projectairsim::RequestEnvelope = rmp_serde::from_slice(msg.as_slice()).expect("valid request");
+                let req: projectairsim::RequestEnvelope =
+                    rmp_serde::from_slice(msg.as_slice()).expect("valid request");
                 let reply_data = match req.method {
                     "/Sim/Ping" => rmp_serde::to_vec(&true).unwrap(),
                     "/Sim/Drone1/EnableApiControl" => rmp_serde::to_vec(&true).unwrap(),
@@ -59,7 +64,8 @@ fn test_blocking_client_rpc_and_drone() {
     });
 
     // Connect blocking client
-    let client = Client::connect_with_ports("127.0.0.1", pair_port, rep_port).expect("connect failed");
+    let client =
+        Client::connect_with_ports("127.0.0.1", pair_port, rep_port).expect("connect failed");
 
     // 1. Direct synchronous ping
     assert!(client.ping().expect("ping failed"));
@@ -69,7 +75,9 @@ fn test_blocking_client_rpc_and_drone() {
     let drone: Drone = world.get_drone("Drone1");
 
     // 3. API Control
-    assert!(drone.enable_api_control().expect("enable api control failed"));
+    assert!(drone
+        .enable_api_control()
+        .expect("enable api control failed"));
 
     // 4. Takeoff with AsyncResult handle (C++ style)
     let mut takeoff_ar: AsyncResult<bool> = drone.takeoff_async(10.0);

@@ -9,7 +9,11 @@ pub struct Vector3 {
 }
 
 impl Vector3 {
-    pub const ZERO: Self = Self { x: 0.0, y: 0.0, z: 0.0 };
+    pub const ZERO: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
 
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
@@ -30,7 +34,12 @@ pub struct Quaternion {
 }
 
 impl Quaternion {
-    pub const IDENTITY: Self = Self { w: 1.0, x: 0.0, y: 0.0, z: 0.0 };
+    pub const IDENTITY: Self = Self {
+        w: 1.0,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
 
     pub fn new(w: f64, x: f64, y: f64, z: f64) -> Self {
         Self { w, x, y, z }
@@ -71,7 +80,10 @@ impl Pose {
     };
 
     pub fn new(position: Vector3, orientation: Quaternion) -> Self {
-        Self { position, orientation }
+        Self {
+            position,
+            orientation,
+        }
     }
 
     pub fn from_translation(x: f64, y: f64, z: f64) -> Self {
@@ -92,7 +104,11 @@ pub struct GeoPoint {
 
 impl GeoPoint {
     pub fn new(latitude: f64, longitude: f64, altitude: f64) -> Self {
-        Self { latitude, longitude, altitude }
+        Self {
+            latitude,
+            longitude,
+            altitude,
+        }
     }
 }
 

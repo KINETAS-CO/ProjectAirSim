@@ -1,6 +1,9 @@
-use std::time::Duration;
-use nng::{Protocol, Socket, options::{Options, RecvTimeout, SendTimeout}};
 use crate::error::{Result, SimError};
+use nng::{
+    options::{Options, RecvTimeout, SendTimeout},
+    Protocol, Socket,
+};
+use std::time::Duration;
 
 /// Low-level NNG transport wrapping Req0 (RPC services) and Pair0 (Topics).
 pub struct NngTransport {
@@ -29,12 +32,14 @@ impl NngTransport {
         let _ = pair_socket.set_opt::<RecvTimeout>(Some(Duration::from_millis(500)));
 
         // Dial RPC services
-        req_socket.dial(&req_url)
-            .map_err(|e| SimError::TransportError(format!("Failed to dial RPC services at {req_url}: {e}")))?;
+        req_socket.dial(&req_url).map_err(|e| {
+            SimError::TransportError(format!("Failed to dial RPC services at {req_url}: {e}"))
+        })?;
 
         // Dial Topics
-        pair_socket.dial(&pair_url)
-            .map_err(|e| SimError::TransportError(format!("Failed to dial Topics at {pair_url}: {e}")))?;
+        pair_socket.dial(&pair_url).map_err(|e| {
+            SimError::TransportError(format!("Failed to dial Topics at {pair_url}: {e}"))
+        })?;
 
         Ok(Self {
             req_socket,
@@ -44,35 +49,42 @@ impl NngTransport {
 
     /// Sends a raw request over Req0 and blocks for the reply.
     pub fn send_request_sync(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
-        self.req_socket.send(req_bytes)
-            .map_err(|(_, e)| SimError::TransportError(format!("Failed to send RPC request: {e}")))?;
+        self.req_socket.send(req_bytes).map_err(|(_, e)| {
+            SimError::TransportError(format!("Failed to send RPC request: {e}"))
+        })?;
 
-        let msg = self.req_socket.recv()
-            .map_err(|e| SimError::TransportError(format!("Failed to receive RPC response: {e}")))?;
+        let msg = self.req_socket.recv().map_err(|e| {
+            SimError::TransportError(format!("Failed to receive RPC response: {e}"))
+        })?;
 
         Ok(msg.as_slice().to_vec())
     }
 
     /// Sends a topic frame over Pair0.
     pub fn send_topic_frame_sync(&self, frame_bytes: &[u8]) -> Result<()> {
-        self.pair_socket.send(frame_bytes)
-            .map_err(|(_, e)| SimError::TransportError(format!("Failed to send topic frame: {e}")))?;
+        self.pair_socket.send(frame_bytes).map_err(|(_, e)| {
+            SimError::TransportError(format!("Failed to send topic frame: {e}"))
+        })?;
         Ok(())
     }
 
     /// Receives a topic frame over Pair0, waiting up to `timeout_ms`.
     pub fn recv_topic_frame_sync(&self, timeout_ms: u32) -> Result<Option<Vec<u8>>> {
-        let _ = self.pair_socket.set_opt::<RecvTimeout>(Some(Duration::from_millis(timeout_ms as u64)));
+        let _ = self
+            .pair_socket
+            .set_opt::<RecvTimeout>(Some(Duration::from_millis(timeout_ms as u64)));
         match self.pair_socket.recv() {
             Ok(msg) => Ok(Some(msg.as_slice().to_vec())),
             Err(nng::Error::TimedOut) => Ok(None),
-            Err(e) => Err(SimError::TransportError(format!("Failed to receive topic frame: {e}"))),
+            Err(e) => Err(SimError::TransportError(format!(
+                "Failed to receive topic frame: {e}"
+            ))),
         }
     }
 
     /// Closes the sockets.
     pub fn close(&self) {
-        let _ = self.req_socket.close();
-        let _ = self.pair_socket.close();
+        self.req_socket.close();
+        self.pair_socket.close();
     }
 }

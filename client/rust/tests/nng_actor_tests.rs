@@ -1,11 +1,11 @@
 #![cfg(feature = "async")]
 
-use std::time::Duration;
 use nng::{Protocol, Socket};
 use projectairsim::protocol::frame::TopicFrame;
 use projectairsim::protocol::request::RawDataPayload;
 use projectairsim::protocol::response::RawResponseEnvelope;
 use projectairsim::Client;
+use std::time::Duration;
 
 #[tokio::test]
 async fn test_nng_actor_real_socket_rpc_and_topics() {
@@ -17,15 +17,20 @@ async fn test_nng_actor_real_socket_rpc_and_topics() {
 
     // Start mock server sockets
     let rep_socket = Socket::new(Protocol::Rep0).expect("failed to open Rep0 socket");
-    rep_socket.listen(&rep_url).expect("failed to listen on Rep0");
+    rep_socket
+        .listen(&rep_url)
+        .expect("failed to listen on Rep0");
 
     let pair_server = Socket::new(Protocol::Pair0).expect("failed to open Pair0 socket");
-    pair_server.listen(&pair_url).expect("failed to listen on Pair0");
+    pair_server
+        .listen(&pair_url)
+        .expect("failed to listen on Pair0");
 
     // Spawn server worker thread to reply to RPC requests
     let server_thread = std::thread::spawn(move || {
         if let Ok(msg) = rep_socket.recv() {
-            let req: projectairsim::RequestEnvelope = rmp_serde::from_slice(msg.as_slice()).expect("valid RequestEnvelope");
+            let req: projectairsim::RequestEnvelope =
+                rmp_serde::from_slice(msg.as_slice()).expect("valid RequestEnvelope");
             assert_eq!(req.method, "/Sim/Ping");
 
             // Build reply envelope: {"id": 1, "result": {"data": <msgpack(true)>}, "version": 1.0}
@@ -54,12 +59,18 @@ async fn test_nng_actor_real_socket_rpc_and_topics() {
         .expect("client connect failed");
 
     // Test 1: Subscribe to topic
-    let mut sub = client.subscribe("world/drone1/pose").await.expect("subscribe failed");
+    let mut sub = client
+        .subscribe("world/drone1/pose")
+        .await
+        .expect("subscribe failed");
 
     // Test 2: Perform RPC request
     #[derive(serde::Serialize)]
     struct EmptyParams {}
-    let ping_res: bool = client.request("/Sim/Ping", &EmptyParams {}).await.expect("ping failed");
+    let ping_res: bool = client
+        .request("/Sim/Ping", &EmptyParams {})
+        .await
+        .expect("ping failed");
     assert!(ping_res);
 
     // Test 3: Receive published topic frame
