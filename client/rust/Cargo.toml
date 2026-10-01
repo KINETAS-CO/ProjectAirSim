@@ -25,7 +25,12 @@ thiserror = "1.0"
 tracing = "0.1"
 
 # Async dependencies (default)
-tokio = { version = "1.36", features = ["rt", "sync", "time", "macros"], optional = true }
+tokio = { version = "1.36", features = [
+    "rt",
+    "sync",
+    "time",
+    "macros",
+], optional = true }
 futures-util = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
 
@@ -45,4 +50,3 @@ required-features = ["async"]
 [[example]]
 name = "sync_drone_flight"
 required-features = ["sync"]
-

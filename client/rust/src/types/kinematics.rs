@@ -112,6 +112,59 @@ impl GeoPoint {
     }
 }
 
+/// Geographic position coordinates with altitude in meters and lat/lon in degrees.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub struct GeoPosition {
+    pub altitude: f64,
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+impl GeoPosition {
+    pub fn new(latitude: f64, longitude: f64, altitude: f64) -> Self {
+        Self {
+            altitude,
+            latitude,
+            longitude,
+        }
+    }
+}
+
+/// 3D spatial transform including timestamp, frame ID, translation, and rotation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct Transform {
+    #[serde(default)]
+    pub timestamp: i64,
+    #[serde(default)]
+    pub frame_id: String,
+    pub translation: Vector3,
+    pub rotation: Quaternion,
+}
+
+impl Transform {
+    pub fn new(translation: Vector3, rotation: Quaternion) -> Self {
+        Self {
+            timestamp: 0,
+            frame_id: String::new(),
+            translation,
+            rotation,
+        }
+    }
+
+    pub fn with_frame(
+        frame_id: impl Into<String>,
+        translation: Vector3,
+        rotation: Quaternion,
+    ) -> Self {
+        Self {
+            timestamp: 0,
+            frame_id: frame_id.into(),
+            translation,
+            rotation,
+        }
+    }
+}
+
 /// Vehicle landed state indicator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(i32)]
@@ -126,4 +179,32 @@ pub enum LandedState {
 pub struct ReadyState {
     pub is_ready: bool,
     pub message: String,
+}
+
+/// Yaw control modes for multirotor flight trajectories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum YawControlMode {
+    MaxDegreeOfFreedom = 0,
+    ForwardOnly = 1,
+}
+
+impl Default for YawControlMode {
+    fn default() -> Self {
+        Self::MaxDegreeOfFreedom
+    }
+}
+
+/// VTOL flight modes for convertible/tailsitter aircraft.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum VTOLMode {
+    Multirotor = 0,
+    FixedWing = 1,
+}
+
+impl Default for VTOLMode {
+    fn default() -> Self {
+        Self::Multirotor
+    }
 }
