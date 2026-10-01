@@ -208,6 +208,49 @@ For setup details, binary locations, and usage examples, see
 
 ---
 
+## Rust Client
+
+Project AirSim includes a native Rust client library under `client/rust/`, providing both asynchronous (Tokio-native) and synchronous (blocking) client APIs.
+
+The Rust client uses:
+
+- Rust 1.75 or newer (installed via [rustup](https://rustup.rs/))
+- Cargo build system
+- NNG transport bindings (`nng-rs`)
+- `cargo-nextest` (optional, for fast parallel test execution)
+
+Build the Rust client from the repository root:
+
+```bash
+./build_rust_client.sh debug
+./build_rust_client.sh release
+./build_rust_client.sh debug --tests
+```
+
+On Windows:
+
+```bat
+build_rust_client.cmd debug
+build_rust_client.cmd release
+build_rust_client.cmd debug --tests
+```
+
+Because the repository root contains a virtual Cargo workspace, standard Cargo commands also work directly from the repository root:
+
+```bash
+# Build client library and examples
+cargo build --all-features
+
+# Run unit tests
+cargo nextest run --all-features
+# Or using standard cargo test:
+cargo test --all-features
+```
+
+For setup details, usage examples, and Cargo feature flags, see the **[Project AirSim Rust Client README](../client/rust/README.md)**.
+
+---
+
 Copyright (C) Microsoft Corporation.  
 Copyright (C) 2025 IAMAI CONSULTING CORP
 
