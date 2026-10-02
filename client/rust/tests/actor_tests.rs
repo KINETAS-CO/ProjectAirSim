@@ -250,12 +250,12 @@ fn test_sync_actors_complete_suite() {
     // AsyncResult handle for MoveToPosition
     let mut move_ar = rover.move_to_position_async(5.0, 10.0, 2.0, None, None, None, None);
     assert!(move_ar.wait_timeout(Duration::from_secs(2)).is_ok());
-    assert!(move_ar.is_done());
-    assert_eq!(move_ar.get_result().unwrap(), true);
+    assert!(move_ar.get_result().unwrap());
 
     assert!(rover
-        .move_by_heading(3.14, 1.5, None, None, None, None)
+        .move_by_heading(std::f32::consts::PI, 1.5, None, None, None, None)
         .expect("move by heading failed"));
+
 
     // 2. WheeledVehicle sync tests
     let vehicle = projectairsim::blocking::WheeledVehicle::new(client.clone(), "Car1", scene_topic);

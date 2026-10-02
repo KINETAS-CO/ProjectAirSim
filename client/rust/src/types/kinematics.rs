@@ -182,29 +182,20 @@ pub struct ReadyState {
 }
 
 /// Yaw control modes for multirotor flight trajectories.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[repr(i32)]
 pub enum YawControlMode {
+    #[default]
     MaxDegreeOfFreedom = 0,
     ForwardOnly = 1,
 }
 
-impl Default for YawControlMode {
-    fn default() -> Self {
-        Self::MaxDegreeOfFreedom
-    }
-}
-
 /// VTOL flight modes for convertible/tailsitter aircraft.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[repr(i32)]
 pub enum VTOLMode {
+    #[default]
     Multirotor = 0,
     FixedWing = 1,
 }
 
-impl Default for VTOLMode {
-    fn default() -> Self {
-        Self::Multirotor
-    }
-}

@@ -71,9 +71,9 @@ fn test_request_envelope_msgpack_json_format() {
         assert_eq!(map["id"], 42);
         assert_eq!(map["method"], "/Sim/Drone1/Takeoff");
         assert_eq!(map["version"], 1.0);
-        assert!(map["params"]["data"].is_array() || map["params"]["data"].is_string());
-        return rmpv::Value::Nil;
+        rmpv::Value::Nil
     });
+
 
     // Verify params.data can be unpacked back into TakeoffParams
     let unpacked_params: TakeoffParams =

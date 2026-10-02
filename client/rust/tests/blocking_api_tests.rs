@@ -83,7 +83,7 @@ fn test_blocking_client_rpc_and_drone() {
     let mut takeoff_ar: AsyncResult<bool> = drone.takeoff_async(10.0);
     assert!(takeoff_ar.wait_timeout(Duration::from_secs(2)).is_ok());
     assert!(takeoff_ar.is_done());
-    assert_eq!(takeoff_ar.get_result().unwrap(), true);
+    assert!(takeoff_ar.get_result().unwrap());
 
     server_thread.join().expect("server thread failed");
 }
