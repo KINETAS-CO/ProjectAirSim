@@ -1,5 +1,6 @@
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use tracing::{debug, warn};
@@ -13,11 +14,17 @@ struct RpcRequest {
     reply: oneshot::Sender<Result<Vec<u8>>>,
 }
 
+struct RpcQueueState {
+    priority: VecDeque<RpcRequest>,
+    normal: VecDeque<RpcRequest>,
+    is_running: bool,
+}
+
 /// Actor managing NNG sockets over dedicated worker threads,
 /// exposing asynchronous Tokio channels for RPC and Topics.
 pub struct NngActor {
     transport: Arc<NngTransport>,
-    rpc_tx: mpsc::Sender<RpcRequest>,
+    rpc_queue: Arc<(Mutex<RpcQueueState>, Condvar)>,
     topic_tx: mpsc::Sender<Vec<u8>>,
     topic_broadcast: broadcast::Sender<TopicFrame>,
     topic_infos: Arc<RwLock<Vec<TopicInfo>>>,
@@ -30,9 +37,20 @@ impl NngActor {
     /// Starts the NNG actor, connecting to the simulation server.
     pub fn start(address: &str, port_topics: u16, port_services: u16) -> Result<Self> {
         let transport = Arc::new(NngTransport::connect(address, port_topics, port_services)?);
+        Self::from_transport(transport)
+    }
 
+    /// Creates an NNG actor wrapping an existing NngTransport instance.
+    pub fn from_transport(transport: Arc<NngTransport>) -> Result<Self> {
         let is_running = Arc::new(AtomicBool::new(true));
-        let (rpc_tx, mut rpc_rx) = mpsc::channel::<RpcRequest>(128);
+        let rpc_queue = Arc::new((
+            Mutex::new(RpcQueueState {
+                priority: VecDeque::new(),
+                normal: VecDeque::new(),
+                is_running: true,
+            }),
+            Condvar::new(),
+        ));
         let (topic_tx, mut topic_out_rx) = mpsc::channel::<Vec<u8>>(128);
         let (topic_broadcast, _) = broadcast::channel::<TopicFrame>(2048);
         let topic_infos = Arc::new(RwLock::new(Vec::new()));
@@ -40,21 +58,35 @@ impl NngActor {
         // 1. RPC Worker Thread
         let rpc_transport = Arc::clone(&transport);
         let rpc_running = Arc::clone(&is_running);
+        let rpc_queue_clone = Arc::clone(&rpc_queue);
         let rpc_thread = std::thread::Builder::new()
             .name("airsim-rpc-actor".into())
             .spawn(move || {
                 debug!("RPC actor thread started");
+                let (lock, cvar) = &*rpc_queue_clone;
                 while rpc_running.load(Ordering::Relaxed) {
-                    match rpc_rx.blocking_recv() {
-                        Some(RpcRequest { payload, reply }) => {
-                            if payload.is_empty() {
-                                break; // Shutdown sentinel received
-                            }
-                            let res = rpc_transport.send_request_sync(&payload);
-                            let _ = reply.send(res);
+                    let req = {
+                        let mut state = lock.lock().unwrap();
+                        while state.is_running && state.priority.is_empty() && state.normal.is_empty() {
+                            state = cvar.wait(state).unwrap();
                         }
-                        None => break, // Channel closed
+                        if !state.is_running && state.priority.is_empty() && state.normal.is_empty() {
+                            break;
+                        }
+                        if let Some(req) = state.priority.pop_front() {
+                            req
+                        } else if let Some(req) = state.normal.pop_front() {
+                            req
+                        } else {
+                            continue;
+                        }
+                    };
+
+                    if req.payload.is_empty() {
+                        break;
                     }
+                    let res = rpc_transport.send_request_sync(&req.payload);
+                    let _ = req.reply.send(res);
                 }
                 debug!("RPC actor thread exiting");
             })
@@ -131,7 +163,7 @@ impl NngActor {
 
         Ok(Self {
             transport,
-            rpc_tx,
+            rpc_queue,
             topic_tx,
             topic_broadcast,
             topic_infos,
@@ -153,15 +185,60 @@ impl NngActor {
         }
 
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.rpc_tx
-            .send(RpcRequest {
+        {
+            let (lock, cvar) = &*self.rpc_queue;
+            let mut state = lock.lock().unwrap();
+            if !state.is_running {
+                return Err(SimError::ConnectionClosed);
+            }
+            state.normal.push_back(RpcRequest {
                 payload,
                 reply: reply_tx,
-            })
-            .await
-            .map_err(|_| SimError::ConnectionClosed)?;
+            });
+            cvar.notify_one();
+        }
 
         reply_rx.await.map_err(|_| SimError::Cancelled)?
+    }
+
+    /// Asynchronously dispatches a high-priority RPC request, jumping ahead of queued normal requests.
+    pub async fn send_rpc_priority(&self, payload: Vec<u8>) -> Result<Vec<u8>> {
+        if payload.is_empty() {
+            return Err(SimError::ProtocolError(
+                "Cannot send empty RPC payload".into(),
+            ));
+        }
+        if !self.is_running.load(Ordering::Relaxed) {
+            return Err(SimError::ConnectionClosed);
+        }
+
+        let (reply_tx, reply_rx) = oneshot::channel();
+        {
+            let (lock, cvar) = &*self.rpc_queue;
+            let mut state = lock.lock().unwrap();
+            if !state.is_running {
+                return Err(SimError::ConnectionClosed);
+            }
+            state.priority.push_back(RpcRequest {
+                payload,
+                reply: reply_tx,
+            });
+            cvar.notify_one();
+        }
+
+        reply_rx.await.map_err(|_| SimError::Cancelled)?
+    }
+
+    /// Cancels all pending queued requests that have not yet been sent to the server.
+    pub fn cancel_all_requests(&self) {
+        let (lock, _) = &*self.rpc_queue;
+        let mut state = lock.lock().unwrap();
+        for req in state.priority.drain(..) {
+            let _ = req.reply.send(Err(SimError::Cancelled));
+        }
+        for req in state.normal.drain(..) {
+            let _ = req.reply.send(Err(SimError::Cancelled));
+        }
     }
 
     /// Asynchronously sends an outgoing topic frame (e.g. Subscribe, Unsubscribe, Publish).
@@ -194,12 +271,19 @@ impl NngActor {
             return;
         }
 
-        // Send sentinel to unblock RPC thread
-        let (dummy_tx, _) = oneshot::channel();
-        let _ = self.rpc_tx.try_send(RpcRequest {
-            payload: Vec::new(),
-            reply: dummy_tx,
-        });
+        // Unblock RPC thread and cancel any pending requests
+        {
+            let (lock, cvar) = &*self.rpc_queue;
+            let mut state = lock.lock().unwrap();
+            state.is_running = false;
+            for req in state.priority.drain(..) {
+                let _ = req.reply.send(Err(SimError::Cancelled));
+            }
+            for req in state.normal.drain(..) {
+                let _ = req.reply.send(Err(SimError::Cancelled));
+            }
+            cvar.notify_all();
+        }
 
         // Close sockets to immediately unblock any thread waiting on recv
         self.transport.close();
