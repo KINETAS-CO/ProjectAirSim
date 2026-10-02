@@ -7,8 +7,9 @@
 //! cargo run --example hello_drone
 //! ```
 
-use std::path::Path;
 use projectairsim::{Client, LandedState, World};
+use std::path::Path;
+use tracing::info;
 
 struct Config {
     sim_host: String,
@@ -61,53 +62,56 @@ impl Config {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    // Set custom log output sink matching C++ HelloDrone.cpp
+    projectairsim::set_log_sink(|severity, message| {
+        println!("[{severity}] {message}");
+    });
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
     let drone = world.get_drone(&config.vehicle_name);
-    println!("[OK] Connected to vehicle '{}'", drone.name());
+    info!("Connected to vehicle '{}'", drone.name());
 
-    println!("[..] Enabling API control...");
+    info!("Enabling API control...");
     drone.enable_api_control().await?;
 
-    println!("[..] Arming vehicle motors...");
+    info!("Arming vehicle motors...");
     drone.arm().await?;
 
     let ready_state = drone.get_ready_state().await?;
-    println!(
-        "[OK] Ready state: is_ready={}, message='{}'",
+    info!(
+        "Ready state: is_ready={}, message='{}'",
         ready_state.is_ready, ready_state.message
     );
 
-    println!("[..] Commanding takeoff (altitude hold)...");
+    info!("Commanding takeoff (altitude hold)...");
     drone.takeoff(15.0).await?;
-    println!("[OK] Takeoff completed");
+    info!("Takeoff completed");
 
-    println!("[..] Moving up (NED vz = -1.0 m/s for 4.0 seconds)...");
+    info!("Moving up (NED vz = -1.0 m/s for 4.0 seconds)...");
     drone.move_by_velocity(0.0, 0.0, -1.0, 4.0).await?;
-    println!("[OK] Climb completed");
+    info!("Climb completed");
 
-    println!("[..] Commanding landing...");
+    info!("Commanding landing...");
     drone.land(15.0).await?;
     let landed_state = drone.get_landed_state().await?;
-    println!(
-        "[OK] Landed state: {}",
+    info!(
+        "Landed state: {}",
         match landed_state {
             LandedState::Landed => "landed",
             LandedState::Airborne => "airborne",
@@ -115,12 +119,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     );
 
-    println!("[..] Disarming motors...");
+    info!("Disarming motors...");
     drone.disarm().await?;
 
-    println!("[..] Disabling API control...");
+    info!("Disabling API control...");
     drone.disable_api_control().await?;
 
-    println!("[PASS] Hello Drone scenario completed successfully!");
+    info!("Hello Drone scenario completed successfully!");
     Ok(())
 }

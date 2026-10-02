@@ -8,9 +8,10 @@
 //! cargo run --example world_debug_plots
 //! ```
 
+use projectairsim::{Client, ColorRGBA, Pose, Quaternion, Vector3, World};
 use std::path::Path;
 use std::time::Duration;
-use projectairsim::{Client, ColorRGBA, Pose, Quaternion, Vector3, World};
+use tracing::info;
 
 struct Config {
     sim_host: String,
@@ -57,26 +58,26 @@ impl Config {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
-    println!("[..] Plotting persistent red 3D points in simulation world...");
+    info!("Plotting persistent red 3D points in simulation world...");
     let points: Vec<Vector3> = (0..20)
         .map(|i| {
             let t = i as f64 / 19.0;
@@ -87,15 +88,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     world
         .plot_debug_points(&points, ColorRGBA::RED, 10.0, 10.0, true)
         .await?;
-    println!("[OK] 20 points plotted");
+    info!("20 points plotted");
 
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    println!("[..] Flushing persistent markers from viewport...");
+    info!("Flushing persistent markers from viewport...");
     world.flush_persistent_markers().await?;
-    println!("[OK] Markers flushed");
+    info!("Markers flushed");
 
-    println!("[..] Plotting magenta debug 3D arrows...");
+    info!("Plotting magenta debug 3D arrows...");
     let points_start: Vec<Vector3> = (0..10)
         .map(|i| {
             let t = i as f64 / 9.0;
@@ -120,21 +121,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             false,
         )
         .await?;
-    println!("[OK] 10 arrows plotted");
+    info!("10 arrows plotted");
 
-    println!("[..] Plotting solid red line strip...");
+    info!("Plotting solid red line strip...");
     world
         .plot_debug_solid_line(&points[..10], ColorRGBA::RED, 5.0, 10.0, false)
         .await?;
-    println!("[OK] Solid line plotted");
+    info!("Solid line plotted");
 
-    println!("[..] Plotting green dashed line segments...");
+    info!("Plotting green dashed line segments...");
     world
         .plot_debug_dashed_line(&points[10..], ColorRGBA::GREEN, 5.0, 10.0, false)
         .await?;
-    println!("[OK] Dashed line plotted");
+    info!("Dashed line plotted");
 
-    println!("[..] Plotting debug text strings at target waypoints...");
+    info!("Plotting debug text strings at target waypoints...");
     let strings = vec![
         "Waypoint Alpha".to_string(),
         "Waypoint Beta".to_string(),
@@ -148,9 +149,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     world
         .plot_debug_strings(&strings, &text_positions, 1.5, ColorRGBA::YELLOW, 10.0)
         .await?;
-    println!("[OK] Debug strings plotted");
+    info!("Debug strings plotted");
 
-    println!("[..] Plotting debug coordinate transforms triads...");
+    info!("Plotting debug coordinate transforms triads...");
     let poses = vec![
         Pose::new(Vector3::new(2.0, 0.0, -2.0), Quaternion::default()),
         Pose::new(Vector3::new(4.0, 0.0, -2.0), Quaternion::default()),
@@ -158,9 +159,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     world
         .plot_debug_transforms(&poses, 3.0, 5.0, 10.0, false)
         .await?;
-    println!("[OK] Coordinate frame transforms plotted");
+    info!("Coordinate frame transforms plotted");
 
-    println!("[..] Extracting 3D voxel occupancy grid from scene geometry...");
+    info!("Extracting 3D voxel occupancy grid from scene geometry...");
     let voxel_center = Pose::new(Vector3::new(0.0, 0.0, -2.0), Quaternion::default());
     let binvox_path = "target/world_debug.binvox";
     let voxels = world
@@ -175,12 +176,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(binvox_path),
         )
         .await?;
-    println!(
-        "[OK] Voxel grid extracted ({} total cells). Exported to {}",
+    info!(
+        "Voxel grid extracted ({} total cells). Exported to {}",
         voxels.len(),
         binvox_path
     );
 
-    println!("[PASS] World debug plots scenario completed successfully!");
+    info!("World debug plots scenario completed successfully!");
     Ok(())
 }

@@ -8,9 +8,10 @@
 //! cargo run --example user_radar_scenario
 //! ```
 
+use projectairsim::{Client, World};
 use std::path::Path;
 use std::time::Duration;
-use projectairsim::{Client, World};
+use tracing::info;
 
 struct Config {
     sim_host: String,
@@ -78,44 +79,44 @@ fn count_msgpack_field(payload: &[u8], field_name: &str) -> usize {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
     let drone = world.get_drone(&config.vehicle_name);
-    println!("[OK] Connected to drone '{}'", drone.name());
+    info!("Connected to drone '{}'", drone.name());
 
-    println!("[..] Enabling API control and arming...");
+    info!("Enabling API control and arming...");
     drone.enable_api_control().await?;
     drone.arm().await?;
-    println!("[OK] Armed");
+    info!("Armed");
 
-    println!("[..] Commanding takeoff...");
+    info!("Commanding takeoff...");
     drone.takeoff(10.0).await?;
-    println!("[OK] Drone at mission altitude");
+    info!("Drone at mission altitude");
 
     let detections_topic = drone.get_sensor_topic(&config.radar_name, "radar_detections");
     let tracks_topic = drone.get_sensor_topic(&config.radar_name, "radar_tracks");
 
-    println!("[INFO] Subscribing to Radar detections: {detections_topic}");
+    info!("Subscribing to Radar detections: {detections_topic}");
     let mut det_sub = client.subscribe(&detections_topic).await?;
 
-    println!("[INFO] Subscribing to Radar tracks: {tracks_topic}");
+    info!("Subscribing to Radar tracks: {tracks_topic}");
     let mut track_sub = client.subscribe(&tracks_topic).await?;
 
     let mut detection_frames = 0;
@@ -129,8 +130,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(msg_bytes) = res {
                     detection_frames += 1;
                     let count = count_msgpack_field(&msg_bytes, "radar_detections");
-                    println!(
-                        "[OK] Radar detections frame {} received: {} targets ({} bytes)",
+                    info!(
+                        "Radar detections frame {} received: {} targets ({} bytes)",
                         detection_frames, count, msg_bytes.len()
                     );
                 }
@@ -139,8 +140,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(msg_bytes) = res {
                     track_frames += 1;
                     let count = count_msgpack_field(&msg_bytes, "radar_tracks");
-                    println!(
-                        "[OK] Radar tracks frame {} received: {} tracks ({} bytes)",
+                    info!(
+                        "Radar tracks frame {} received: {} tracks ({} bytes)",
                         track_frames, count, msg_bytes.len()
                     );
                 }
@@ -149,17 +150,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("[..] Unsubscribing from Radar topics...");
+    info!("Unsubscribing from Radar topics...");
     let _ = client.unsubscribe(&detections_topic).await;
     let _ = client.unsubscribe(&tracks_topic).await;
 
-    println!("[..] Commanding landing...");
+    info!("Commanding landing...");
     drone.land(10.0).await?;
-    println!("[OK] Drone landed");
+    info!("Drone landed");
 
     drone.disarm().await?;
     drone.disable_api_control().await?;
 
-    println!("[PASS] User Radar scenario completed successfully!");
+    info!("User Radar scenario completed successfully!");
     Ok(())
 }

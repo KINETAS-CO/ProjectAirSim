@@ -7,10 +7,11 @@
 //! cargo run --example user_env_actor_scenario
 //! ```
 
+use projectairsim::{Client, NEDTrajectory, World};
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::path::Path;
-use projectairsim::{Client, NEDTrajectory, World};
+use tracing::info;
 
 struct Config {
     sim_host: String,
@@ -83,22 +84,22 @@ fn generate_loop_coords(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
@@ -106,22 +107,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let actor_api = world.get_env_actor("ActorWithApiTraj");
     let actor_api_offset = world.get_env_actor("ActorWithApiTrajAndOffset");
 
-    println!("[..] Articulating tiltrotor shroud rotation angles to 90 degrees...");
+    info!("Articulating tiltrotor shroud rotation angles to 90 degrees...");
     let mut shroud_angles = HashMap::new();
     shroud_angles.insert("Shroud_FL".to_string(), 90.0f32);
     shroud_angles.insert("Shroud_RL".to_string(), 90.0f32);
     shroud_angles.insert("Shroud_FR".to_string(), 90.0f32);
     shroud_angles.insert("Shroud_RR".to_string(), 90.0f32);
     tiltrotor.set_link_rotation_angles(&shroud_angles).await?;
-    println!("[OK] Articulated links positioned");
+    info!("Articulated links positioned");
 
-    println!("[..] Setting TiltrotorWithConfigTrajOffset trajectory with spatial offset...");
+    info!("Setting TiltrotorWithConfigTrajOffset trajectory with spatial offset...");
     tiltrotor
         .set_trajectory("right_and_descend_config", true, 3.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.57)
         .await?;
-    println!("[OK] Configured trajectory assigned to tiltrotor");
+    info!("Configured trajectory assigned to tiltrotor");
 
-    println!("[..] Generating programmatic 3D loop-the-loop trajectory coordinates...");
+    info!("Generating programmatic 3D loop-the-loop trajectory coordinates...");
     let (y_loop, z_loop) = generate_loop_coords(3.0, 10.0, -6.0, 20);
 
     let mut time_sec = vec![4.0f32];
@@ -142,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pose_y.push(*pose_y.last().unwrap() + 3.0);
     pose_z.push(*pose_z.last().unwrap());
 
-    println!("[..] Importing generated NED trajectory into world simulation engine...");
+    info!("Importing generated NED trajectory into world simulation engine...");
     let traj = NEDTrajectory {
         traj_name: "looptheloop".to_string(),
         time: time_sec,
@@ -152,17 +153,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
     world.import_ned_trajectory(traj).await?;
-    println!("[OK] Trajectory 'looptheloop' imported");
+    info!("Trajectory 'looptheloop' imported");
 
-    println!("[..] Assigning 'looptheloop' trajectory to environment actors...");
+    info!("Assigning 'looptheloop' trajectory to environment actors...");
     actor_api
         .set_trajectory("looptheloop", true, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         .await?;
     actor_api_offset
         .set_trajectory("looptheloop", true, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         .await?;
-    println!("[OK] Trajectories bound to actors");
+    info!("Trajectories bound to actors");
 
-    println!("[PASS] User Environment Actor scenario completed successfully!");
+    info!("User Environment Actor scenario completed successfully!");
     Ok(())
 }

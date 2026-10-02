@@ -7,9 +7,10 @@
 //! cargo run --example user_rover_scenario
 //! ```
 
+use projectairsim::{Client, World};
 use std::path::Path;
 use std::time::Duration;
-use projectairsim::{Client, World};
+use tracing::info;
 
 struct Config {
     sim_host: String,
@@ -62,75 +63,75 @@ impl Config {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
     let rover = world.get_rover(&config.vehicle_name);
-    println!("[OK] Connected to rover '{}'", rover.name());
+    info!("Connected to rover '{}'", rover.name());
 
-    println!("[..] Enabling API control...");
+    info!("Enabling API control...");
     let api_ok = rover.enable_api_control().await?;
-    println!("[OK] API control enabled: {}", api_ok);
+    info!("API control enabled: {}", api_ok);
 
-    println!("[..] Arming rover motors...");
+    info!("Arming rover motors...");
     let armed = rover.arm().await?;
-    println!("[OK] Armed: {}", armed);
+    info!("Armed: {}", armed);
 
-    println!("[..] Setting rover controls to zero (idling for 2s)...");
+    info!("Setting rover controls to zero (idling for 2s)...");
     rover.set_rover_controls(0.0, 0.0, 0.0).await?;
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    println!("[..] Driving forward and right (engine=0.5, steering=1.0)...");
+    info!("Driving forward and right (engine=0.5, steering=1.0)...");
     rover.set_rover_controls(0.5, 1.0, 0.0).await?;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    println!("[..] Driving forward and left (engine=0.5, steering=-1.0)...");
+    info!("Driving forward and left (engine=0.5, steering=-1.0)...");
     rover.set_rover_controls(0.5, -1.0, 0.0).await?;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    println!("[..] Applying rover brakes...");
+    info!("Applying rover brakes...");
     rover.set_rover_controls(0.0, 0.0, 0.5).await?;
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    println!("[..] Driving backward and right (engine=-0.5, steering=1.0)...");
+    info!("Driving backward and right (engine=-0.5, steering=1.0)...");
     rover.set_rover_controls(-0.5, 1.0, 0.0).await?;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    println!("[..] Driving backward and left (engine=-0.5, steering=-1.0)...");
+    info!("Driving backward and left (engine=-0.5, steering=-1.0)...");
     rover.set_rover_controls(-0.5, -1.0, 0.0).await?;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    println!("[..] Applying rover brakes...");
+    info!("Applying rover brakes...");
     rover.set_rover_controls(0.0, 0.0, 0.5).await?;
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    println!("[..] Neutralizing controls...");
+    info!("Neutralizing controls...");
     rover.set_rover_controls(0.0, 0.0, 0.0).await?;
 
-    println!("[..] Disarming motors...");
+    info!("Disarming motors...");
     let disarmed = rover.disarm().await?;
-    println!("[OK] Disarmed: {}", disarmed);
+    info!("Disarmed: {}", disarmed);
 
-    println!("[..] Disabling API control...");
+    info!("Disabling API control...");
     let disabled = rover.disable_api_control().await?;
-    println!("[OK] API control disabled: {}", disabled);
+    info!("API control disabled: {}", disabled);
 
-    println!("[PASS] User Rover scenario completed successfully!");
+    info!("User Rover scenario completed successfully!");
     Ok(())
 }

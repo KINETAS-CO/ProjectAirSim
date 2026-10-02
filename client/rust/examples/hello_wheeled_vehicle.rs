@@ -7,9 +7,10 @@
 //! cargo run --example hello_wheeled_vehicle
 //! ```
 
+use projectairsim::{Client, World};
 use std::path::Path;
 use std::time::Duration;
-use projectairsim::{Client, World};
+use tracing::info;
 
 struct Config {
     sim_host: String,
@@ -70,62 +71,62 @@ fn extract_position(kinematics: &serde_json::Value) -> Option<(f64, f64, f64)> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
     let vehicle = world.get_wheeled_vehicle(&config.vehicle_name);
-    println!("[OK] Connected to wheeled vehicle '{}'", vehicle.name());
+    info!("Connected to wheeled vehicle '{}'", vehicle.name());
 
     // Allow physics settling
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     let init_kinematics = vehicle.get_ground_truth_kinematics().await?;
     let init_pos = extract_position(&init_kinematics).unwrap_or((0.0, 0.0, 0.0));
-    println!(
-        "[INFO] Initial position: X={:.2}, Y={:.2}, Z={:.2}",
+    info!(
+        "Initial position: X={:.2}, Y={:.2}, Z={:.2}",
         init_pos.0, init_pos.1, init_pos.2
     );
 
-    println!("[..] Driving with throttle=0.7 and steering=0.45 for 5 seconds...");
+    info!("Driving with throttle=0.7 and steering=0.45 for 5 seconds...");
     vehicle.set_controls(0.7, 0.45, 0.0).await?;
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let final_kinematics = vehicle.get_ground_truth_kinematics().await?;
     let final_pos = extract_position(&final_kinematics).unwrap_or((0.0, 0.0, 0.0));
-    println!(
-        "[INFO] Final position: X={:.2}, Y={:.2}, Z={:.2}",
+    info!(
+        "Final position: X={:.2}, Y={:.2}, Z={:.2}",
         final_pos.0, final_pos.1, final_pos.2
     );
 
     let dx = final_pos.0 - init_pos.0;
     let dy = final_pos.1 - init_pos.1;
     let distance = (dx * dx + dy * dy).sqrt();
-    println!("[INFO] Total horizontal distance traveled: {:.2} m", distance);
+    info!("Total horizontal distance traveled: {:.2} m", distance);
 
-    println!("[..] Applying full brakes...");
+    info!("Applying full brakes...");
     vehicle.set_controls(0.0, 0.0, 1.0).await?;
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    println!("[..] Neutralizing controls...");
+    info!("Neutralizing controls...");
     vehicle.set_controls(0.0, 0.0, 0.0).await?;
 
-    println!("[PASS] Wheeled vehicle scenario completed successfully!");
+    info!("Wheeled vehicle scenario completed successfully!");
     Ok(())
 }

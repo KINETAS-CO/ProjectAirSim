@@ -6,11 +6,12 @@
 
 pub mod config;
 pub mod error;
+pub mod logging;
 pub mod protocol;
 pub mod transport;
 pub mod types;
 
-
+pub use logging::{clear_log_sink, has_log_sink, init_logging, set_log_sink, LogSink, Severity};
 
 #[cfg(feature = "async")]
 pub mod async_api;

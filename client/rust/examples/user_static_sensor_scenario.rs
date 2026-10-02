@@ -7,8 +7,9 @@
 //! cargo run --example user_static_sensor_scenario
 //! ```
 
-use std::path::Path;
 use projectairsim::{Client, ImageType, World};
+use std::path::Path;
+use tracing::info;
 
 struct Config {
     sim_host: String,
@@ -67,39 +68,39 @@ impl Config {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
     let sensor_actor = world.get_static_sensor(&config.actor_name);
-    println!("[OK] Connected to static sensor actor '{}'", sensor_actor.name());
+    info!("Connected to static sensor actor '{}'", sensor_actor.name());
 
-    println!(
-        "[..] Capturing Scene images from camera '{}'...",
+    info!(
+        "Capturing Scene images from camera '{}'...",
         config.camera_name
     );
     let responses = sensor_actor
         .get_camera_images(&config.camera_name, &[ImageType::Scene])
         .await?;
 
-    println!("[OK] Retrieved {} image response frame(s)", responses.len());
+    info!("Retrieved {} image response frame(s)", responses.len());
     for (i, img) in responses.iter().enumerate() {
-        println!(
+        info!(
             "  Frame {}: camera='{}', width={}, height={}, bytes={}, message='{}'",
             i,
             img.camera_name,
@@ -110,6 +111,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    println!("[PASS] Static sensor scenario completed successfully!");
+    info!("Static sensor scenario completed successfully!");
     Ok(())
 }

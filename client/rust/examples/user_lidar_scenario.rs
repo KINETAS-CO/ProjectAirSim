@@ -8,9 +8,10 @@
 //! cargo run --example user_lidar_scenario
 //! ```
 
+use projectairsim::{Client, World};
 use std::path::Path;
 use std::time::Duration;
-use projectairsim::{Client, World};
+use tracing::{info, warn};
 
 struct Config {
     sim_host: String,
@@ -78,39 +79,39 @@ fn count_lidar_points(payload: &[u8]) -> usize {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
     let config = match Config::parse_args() {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
 
-    println!("[INFO] Connecting to ProjectAirSim at {}:8990...", config.sim_host);
+    info!("Connecting to ProjectAirSim at {}:8990...", config.sim_host);
     let client = Client::connect(&config.sim_host).await?;
 
     let scene_path = Path::new(&config.sim_config).join(&config.scene_file);
     let world = if scene_path.exists() {
-        println!("[INFO] Loading scene from {}", scene_path.display());
+        info!("Loading scene from {}", scene_path.display());
         World::new(client.clone(), Some(scene_path.to_str().unwrap())).await?
     } else {
-        println!("[INFO] Attaching to existing simulation scene...");
+        info!("Attaching to existing simulation scene...");
         World::new(client.clone(), None).await?
     };
 
     let drone = world.get_drone(&config.vehicle_name);
-    println!("[OK] Connected to drone '{}'", drone.name());
+    info!("Connected to drone '{}'", drone.name());
 
-    println!("[..] Enabling API control and arming...");
+    info!("Enabling API control and arming...");
     drone.enable_api_control().await?;
     drone.arm().await?;
-    println!("[OK] Armed");
+    info!("Armed");
 
-    println!("[..] Commanding takeoff...");
+    info!("Commanding takeoff...");
     drone.takeoff(10.0).await?;
-    println!("[OK] Drone at mission altitude");
+    info!("Drone at mission altitude");
 
     let lidar_topic = drone.get_sensor_topic(&config.lidar_name, "lidar");
-    println!("[INFO] Subscribing to Lidar topic: {lidar_topic}");
+    info!("Subscribing to Lidar topic: {lidar_topic}");
     let mut lidar_sub = client.subscribe(&lidar_topic).await?;
 
     let mut frames_received = 0;
@@ -123,34 +124,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(Ok(msg_bytes)) => {
                 frames_received += 1;
                 let points = count_lidar_points(&msg_bytes);
-                println!(
-                    "[OK] Lidar frame {} received: {} points ({} raw bytes)",
+                info!(
+                    "Lidar frame {} received: {} points ({} raw bytes)",
                     frames_received,
                     points,
                     msg_bytes.len()
                 );
             }
             Ok(Err(e)) => {
-                eprintln!("[WARN] Lidar subscription error: {e}");
+                warn!("Lidar subscription error: {e}");
                 break;
             }
             Err(_) => {
-                println!("[WARN] Timeout waiting for next Lidar frame");
+                warn!("Timeout waiting for next Lidar frame");
                 break;
             }
         }
     }
 
-    println!("[..] Unsubscribing from Lidar topic...");
+    info!("Unsubscribing from Lidar topic...");
     let _ = client.unsubscribe(&lidar_topic).await;
 
-    println!("[..] Commanding landing...");
+    info!("Commanding landing...");
     drone.land(10.0).await?;
-    println!("[OK] Drone landed");
+    info!("Drone landed");
 
     drone.disarm().await?;
     drone.disable_api_control().await?;
 
-    println!("[PASS] User Lidar scenario completed successfully!");
+    info!("User Lidar scenario completed successfully!");
     Ok(())
 }

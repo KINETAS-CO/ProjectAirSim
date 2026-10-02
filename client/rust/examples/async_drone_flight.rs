@@ -6,33 +6,34 @@
 //! ```
 
 use projectairsim::{Client, Pose, World};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    projectairsim::init_logging();
 
-    println!("Connecting to ProjectAirSim simulation server...");
+    info!("Connecting to ProjectAirSim simulation server...");
     let client = Client::connect("127.0.0.1").await?;
 
-    println!("Server ping: {}", client.ping().await?);
+    info!("Server ping: {}", client.ping().await?);
 
     // Initialize the world (reflecting the currently loaded simulation scene)
     let world = World::new(client.clone(), None).await?;
-    println!("Active scene parent topic: {}", world.parent_topic());
+    info!("Active scene parent topic: {}", world.parent_topic());
 
     // Connect to vehicle Drone1
     let drone = world.get_drone("Drone1");
 
-    println!("Requesting API control...");
+    info!("Requesting API control...");
     drone.enable_api_control().await?;
 
-    println!("Arming vehicle...");
+    info!("Arming vehicle...");
     drone.arm().await?;
 
-    println!("Commanding takeoff...");
+    info!("Commanding takeoff...");
     drone.takeoff(15.0).await?;
 
-    println!("Subscribing to real-time ground truth pose telemetry...");
+    info!("Subscribing to real-time ground truth pose telemetry...");
     let mut pose_sub = drone
         .subscribe_telemetry("robot_info/ground_truth_pose")
         .await?;
@@ -41,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let telemetry_task = tokio::spawn(async move {
         for _ in 0..10 {
             if let Ok(pose) = pose_sub.recv_typed::<Pose>().await {
-                println!(
+                info!(
                     "Telemetry -> Position: [N: {:.2}, E: {:.2}, D: {:.2}]",
                     pose.position.x, pose.position.y, pose.position.z
                 );
@@ -49,17 +50,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    println!("Flying forward at 3.0 m/s for 3 seconds...");
+    info!("Flying forward at 3.0 m/s for 3 seconds...");
     drone.move_by_velocity(3.0, 0.0, 0.0, 3.0).await?;
 
     let _ = telemetry_task.await;
 
-    println!("Landing vehicle...");
+    info!("Landing vehicle...");
     drone.land(15.0).await?;
 
-    println!("Disarming...");
+    info!("Disarming...");
     drone.disarm().await?;
 
-    println!("Flight mission complete!");
+    info!("Flight mission complete!");
     Ok(())
 }
