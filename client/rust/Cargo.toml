@@ -50,3 +50,40 @@ required-features = ["async"]
 [[example]]
 name = "sync_drone_flight"
 required-features = ["sync"]
+
+[[example]]
+name = "hello_drone"
+required-features = ["async"]
+
+[[example]]
+name = "hello_wheeled_vehicle"
+required-features = ["async"]
+
+[[example]]
+name = "user_rover_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_env_actor_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_static_sensor_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_lidar_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_radar_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "two_drones_flight"
+required-features = ["async"]
+
+[[example]]
+name = "world_debug_plots"
+required-features = ["async"]
+

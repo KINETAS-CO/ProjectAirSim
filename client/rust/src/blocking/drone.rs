@@ -260,6 +260,11 @@ impl Drone {
         format!("{}/sensors/{sensor_name}/{method}", self.base_topic())
     }
 
+    /// Builds the full published topic path for a sensor (e.g. `/Sim/robots/Drone1/sensors/lidar1/lidar`).
+    pub fn get_sensor_topic(&self, sensor_name: &str, topic: &str) -> String {
+        format!("{}/sensors/{sensor_name}/{topic}", self.base_topic())
+    }
+
     /// Builds the full RPC actuator method path (e.g. `/Sim/Scene/robots/Drone1/actuators/0/ToggleFault`).
     fn actuator_path(&self, actuator_id: &str, method: &str) -> String {
         format!("{}/actuators/{actuator_id}/{method}", self.base_topic())

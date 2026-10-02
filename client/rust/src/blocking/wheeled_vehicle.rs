@@ -81,6 +81,14 @@ impl WheeledVehicle {
             .request(&self.method_path("SetBrakes"), &SingleValueParams { value })
     }
 
+    /// Sets throttle, steering, and brakes simultaneously.
+    pub fn set_controls(&self, throttle: f32, steering: f32, brake: f32) -> Result<bool> {
+        let t = self.set_throttle(throttle)?;
+        let s = self.set_steering(steering)?;
+        let b = self.set_brakes(brake)?;
+        Ok(t && s && b)
+    }
+
     /// Retrieves current estimated vehicle kinematics.
     pub fn get_kinematics(&self) -> Result<serde_json::Value> {
         self.get_ground_truth_kinematics()

@@ -190,10 +190,8 @@ impl Client {
             loop {
                 match bcast.recv().await {
                     Ok(frame) => {
-                        if frame.topic() == filter_topic {
-                            if tx.send(frame).await.is_err() {
-                                break;
-                            }
+                        if frame.topic() == filter_topic && tx.send(frame).await.is_err() {
+                            break;
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,

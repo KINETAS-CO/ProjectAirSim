@@ -86,6 +86,14 @@ impl WheeledVehicle {
             .await
     }
 
+    /// Sets throttle, steering, and brakes simultaneously.
+    pub async fn set_controls(&self, throttle: f32, steering: f32, brake: f32) -> Result<bool> {
+        let t = self.set_throttle(throttle).await?;
+        let s = self.set_steering(steering).await?;
+        let b = self.set_brakes(brake).await?;
+        Ok(t && s && b)
+    }
+
     /// Retrieves current estimated vehicle kinematics.
     pub async fn get_kinematics(&self) -> Result<serde_json::Value> {
         self.get_ground_truth_kinematics().await
