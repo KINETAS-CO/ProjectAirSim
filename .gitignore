@@ -392,6 +392,7 @@ env/
 **/projectairsim.egg-info/
 **/projectairsim_ros.egg-info/
 client/python/projectairsim/dist/
+client/rust/target/
 
 /tools/ConvertToGLTF/output
 
