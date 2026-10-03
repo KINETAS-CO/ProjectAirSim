@@ -1,137 +1,79 @@
-# ProjectAirSim Rust Client (`projectairsim`)
+# ProjectAirSim Rust Client
 
-A high-performance, dual-mode (`async` and `sync`) native Rust client library for the [ProjectAirSim](https://github.com/microsoft/ProjectAirSim) simulation platform.
-
----
+The `projectairsim` library provides a Rust interface for the ProjectAirSim simulation platform.
+The library communicates with the simulation server through the Nanomsg Next Generation (NNG) protocol.
+You can use asynchronous Tokio tasks, or you can use synchronous blocking function calls.
 
 ## Features
 
-- **Dual-Mode Engine via Cargo Features**:
-  - **`async` (Default)**: Tokio-native asynchronous actor architecture with typed RPC methods and broadcast streams for real-time telemetry topics.
-  - **`sync`**: Blocking interface mirroring the C++ ProjectAirSim API with `AsyncResult<T>` handle mechanics for waiting, timeouts, and completion polling.
-  - **`full`**: Enables both `async` and `sync` modules simultaneously.
-- **Native NNG Transport**: Powered by `nng-rs` (C `libnng` binding) matching the simulation server's NNG engine bug-for-bug.
-  - Port `8990`: Req0 RPC Services (`RequestEnvelope` MessagePack/JSON wire framing).
-  - Port `8989`: Pair0 Topics Pub/Sub (`TopicFrame` 3-tuple MessagePack arrays).
-- **First-Class Vehicle & World APIs**:
-  - Scene configuration parser (`World`) with clock stepping (`pause`, `resume`, `step`).
-  - Multirotor flight control (`Drone`): API control, arming, takeoff, landing, velocity vectors, waypoints.
-  - Sensor queries and camera image capture.
-- **Mock Transport**: Built-in mock transport and unit test suite that can be run hermetically without a running simulator.
+The library includes these features:
+- Asynchronous client with Tokio runtime support
+- Synchronous client with blocking `AsyncResult` handles
+- Flight controls for multirotor drones
+- Drive and brake controls for wheeled vehicles and ground rovers
+- Trajectory and articulation controls for environment actors
+- Camera image capture for stationary sensors
+- Real-time topic data streaming for lidar and radar sensors
+- Debug visual markers and voxel grid export
+- Structured logging with custom callback sinks
 
----
+## Features in Cargo
+
+The crate defines three features in `Cargo.toml`:
+- `async`: This feature is the default. It enables the Tokio asynchronous client.
+- `sync`: This feature enables the blocking client.
+- `full`: This feature enables both asynchronous and synchronous interfaces.
 
 ## Installation
 
-Add `projectairsim` to your `Cargo.toml`:
+To add the library to a project, add this line to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-# Tokio async mode (default)
 projectairsim = { path = "path/to/ProjectAirSim/client/rust" }
-
-# Or for blocking mode:
-# projectairsim = { path = "path/to/ProjectAirSim/client/rust", default-features = false, features = ["sync"] }
 ```
 
----
+If you need blocking calls, disable default features and enable `sync`:
 
-## Usage Examples
-
-### 1. Asynchronous (Tokio) Client
-
-```rust
-use projectairsim::{Client, World, Pose};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to simulation server (default: 8989 topics, 8990 services)
-    let client = Client::connect("127.0.0.1").await?;
-
-    // Initialize world scene
-    let world = World::new(client.clone(), None).await?;
-    let drone = world.get_drone("Drone1");
-
-    // Flight mission sequence
-    drone.enable_api_control().await?;
-    drone.arm().await?;
-    drone.takeoff(15.0).await?;
-
-    // Subscribe to streaming telemetry
-    let mut pose_sub = drone.subscribe_telemetry("robot_info/ground_truth_pose").await?;
-    tokio::spawn(async move {
-        while let Ok(pose) = pose_sub.recv_typed::<Pose>().await {
-            println!("Position: [N: {:.2}, E: {:.2}, D: {:.2}]", pose.position.x, pose.position.y, pose.position.z);
-        }
-    });
-
-    // Velocity flight command
-    drone.move_by_velocity(3.0, 0.0, 0.0, 3.0).await?;
-
-    // Land and disarm
-    drone.land(15.0).await?;
-    drone.disarm().await?;
-
-    Ok(())
-}
+```toml
+[dependencies]
+projectairsim = { path = "path/to/ProjectAirSim/client/rust", default-features = false, features = ["sync"] }
 ```
 
-### 2. Synchronous (Blocking) Client with `AsyncResult`
+## Examples
 
-```rust
-use std::time::Duration;
-use projectairsim::blocking::{AsyncResult, Client, World};
+The repository provides eleven example applications in the `examples/` directory.
+If you want to operate an example, use the `cargo run` command.
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect blocking client
-    let client = Client::connect("127.0.0.1")?;
-    let world = World::new(client.clone(), None)?;
-    let drone = world.get_drone("Drone1");
+- `hello_drone`: Quadrotor takeoff, climb, landing, and custom log sink
+- `hello_wheeled_vehicle`: Ground vehicle throttle, steering, and braking
+- `user_rover_scenario`: Ground rover directional maneuvers
+- `user_env_actor_scenario`: Scenery actor trajectories and articulated links
+- `user_static_sensor_scenario`: Camera images from stationary sensor towers
+- `user_lidar_scenario`: Real-time lidar point cloud streaming
+- `user_radar_scenario`: Streaming radar detections and tracks
+- `two_drones_flight`: Concurrent flight control of two drones
+- `world_debug_plots`: 3D debug arrows, points, lines, and voxel export
+- `async_drone_flight`: Asynchronous drone telemetry streaming
+- `sync_drone_flight`: Synchronous blocking drone flight
 
-    drone.enable_api_control()?;
-    drone.arm()?;
-
-    // C++-style asynchronous handle
-    let mut takeoff_ar: AsyncResult<bool> = drone.takeoff_async(15.0);
-
-    // Poll status while waiting
-    while !takeoff_ar.is_done() {
-        println!("Waiting for takeoff...");
-        let _ = takeoff_ar.wait_timeout(Duration::from_millis(500));
-    }
-    println!("Takeoff finished: {}", takeoff_ar.get_result()?);
-
-    drone.move_by_velocity(2.0, 0.0, 0.0, 2.0)?;
-    drone.land(15.0)?;
-    drone.disarm()?;
-
-    Ok(())
-}
-```
-
----
-
-## Running the Examples
+Operate an example with this command:
 
 ```bash
-# Run async example
-cargo run --example async_drone_flight
+cargo run --example hello_drone
+```
 
-# Run sync example
+If you operate `sync_drone_flight`, include the `sync` feature flag:
+
+```bash
 cargo run --example sync_drone_flight --features sync
 ```
 
----
+## Build and Test
 
-## Testing
+You can build and test the client without a running simulation server.
+The repository includes mock transports for hermetic tests.
 
-```bash
-# Run tests with default async feature
-cargo test
-
-# Run tests in blocking mode
-cargo test --no-default-features --features sync
-
-# Run all tests across both modes
-cargo test --all-features
-```
+1. To build the client library, operate `cargo build --all-features`.
+2. To run the test suite, operate `./build_rust_client.sh debug --tests`.
+3. To test code cleanliness, operate `cargo clippy --all-targets --all-features -- -D warnings`.
