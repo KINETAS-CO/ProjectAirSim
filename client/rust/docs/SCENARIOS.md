@@ -29,7 +29,7 @@ It demonstrates basic quadrotor flight operations.
 7. Commands landing until surface touchdown.
 8. Disarms motors and releases software control.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example hello_drone
@@ -50,7 +50,7 @@ It demonstrates driving and braking operations on ground automobiles.
 6. Queries final position and calculates horizontal distance traveled.
 7. Applies full brakes and then neutralizes controls.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example hello_wheeled_vehicle
@@ -73,7 +73,7 @@ It demonstrates directional maneuvers and braking on ground rovers.
 8. Commands reverse drive with left steering.
 9. Applies brakes, disarms motors, and releases API control.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example user_rover_scenario
@@ -94,7 +94,7 @@ It demonstrates trajectory assignment and articulated link rotations on scenery 
 6. Uploads the generated trajectory into the world simulation engine.
 7. Binds the imported trajectory to environment actors.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example user_env_actor_scenario
@@ -113,7 +113,7 @@ It demonstrates image capture from stationary camera towers.
 4. Receives raw image buffers and metadata from the simulation server.
 5. Logs image dimensions, byte sizes, and frame statuses.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example user_static_sensor_scenario
@@ -134,7 +134,7 @@ It demonstrates real-time lidar point cloud streaming over topic channels.
 6. Unsubscribes from the topic.
 7. Commands landing and releases control.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example user_lidar_scenario
@@ -154,7 +154,7 @@ It demonstrates dual-topic streaming for radar detections and target tracks.
 5. Unsubscribes from both topics after receiving target data.
 6. Commands landing and releases control.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example user_radar_scenario
@@ -175,7 +175,7 @@ It demonstrates concurrent multi-aircraft control in one simulation scene.
 6. Queries and logs kinematics for both aircraft simultaneously.
 7. Commands concurrent landing and disarms both vehicles.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example two_drones_flight
@@ -197,7 +197,7 @@ It demonstrates 3D visual markers, text labels, and voxel extraction.
 7. Plots coordinate transform axis triads.
 8. Extracts a 3D voxel grid and exports the data to a `.binvox` file.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example world_debug_plots
@@ -208,7 +208,7 @@ cargo run --example world_debug_plots
 This scenario demonstrates the blocking synchronous API.
 It uses `AsyncResult` handles that match C++ future polling patterns.
 
-### How to Operate
+### How to Run
 
 ```bash
 cargo run --example sync_drone_flight --features sync

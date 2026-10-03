@@ -43,7 +43,7 @@ projectairsim = { path = "path/to/ProjectAirSim/client/rust", default-features =
 ## Examples
 
 The repository provides eleven example applications in the `examples/` directory.
-If you want to operate an example, use the `cargo run` command.
+If you want to run an example, use the `cargo run` command.
 
 - `hello_drone`: Quadrotor takeoff, climb, landing, and custom log sink
 - `hello_wheeled_vehicle`: Ground vehicle throttle, steering, and braking
@@ -57,13 +57,13 @@ If you want to operate an example, use the `cargo run` command.
 - `async_drone_flight`: Asynchronous drone telemetry streaming
 - `sync_drone_flight`: Synchronous blocking drone flight
 
-Operate an example with this command:
+Run an example with this command:
 
 ```bash
 cargo run --example hello_drone
 ```
 
-If you operate `sync_drone_flight`, include the `sync` feature flag:
+If you run `sync_drone_flight`, include the `sync` feature flag:
 
 ```bash
 cargo run --example sync_drone_flight --features sync
@@ -74,6 +74,6 @@ cargo run --example sync_drone_flight --features sync
 You can build and test the client without a running simulation server.
 The repository includes mock transports for hermetic tests.
 
-1. To build the client library, operate `cargo build --all-features`.
-2. To run the test suite, operate `./build_rust_client.sh debug --tests`.
-3. To test code cleanliness, operate `cargo clippy --all-targets --all-features -- -D warnings`.
+1. To build the client library, run `cargo build --all-features`.
+2. To run the test suite, run `./build_rust_client.sh debug --tests`.
+3. To test code cleanliness, run `cargo clippy --all-targets --all-features -- -D warnings`.
