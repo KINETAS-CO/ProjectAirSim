@@ -1,8 +1,12 @@
-use serde::Serialize;
 use tracing::info;
 
 use crate::async_api::client::Client;
 use crate::error::Result;
+use crate::protocol::params::{
+    EmptyParams, RoverMoveByHeadingParams as MoveByHeadingParams,
+    RoverMoveToPositionParams as MoveToPositionParams, RoverSetPoseParams as SetPoseParams,
+    SetRoverControlsParams,
+};
 use crate::types::Pose;
 
 /// Asynchronous control handle for a ground rover vehicle.
@@ -12,43 +16,6 @@ pub struct Rover {
     rover_name: String,
     parent_topic: String,
 }
-
-#[derive(Serialize)]
-struct SetPoseParams {
-    pose: Pose,
-    reset_kinematics: bool,
-}
-
-#[derive(Serialize)]
-struct MoveToPositionParams {
-    x: f32,
-    y: f32,
-    velocity: f32,
-    timeout_sec: f32,
-    yaw_rate_max: f32,
-    lookahead: f32,
-    adaptive_lookahead: f32,
-}
-
-#[derive(Serialize)]
-struct MoveByHeadingParams {
-    heading: f32,
-    speed: f32,
-    duration: f32,
-    heading_margin: f32,
-    yaw_rate: f32,
-    timeout_sec: f32,
-}
-
-#[derive(Serialize)]
-struct SetRoverControlsParams {
-    engine: f32,
-    steering_angle: f32,
-    brake: f32,
-}
-
-#[derive(Serialize)]
-struct EmptyParams {}
 
 impl Rover {
     /// Creates a new Rover handle.

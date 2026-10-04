@@ -7,7 +7,7 @@ pub mod world;
 pub use clock::ClockType;
 pub use image::{ImageRequest, ImageResponse, ImageType};
 pub use kinematics::{
-    GeoPoint, GeoPosition, LandedState, Pose, Quaternion, ReadyState, Transform, VTOLMode, Vector3,
+    GeoPosition, LandedState, Pose, Quaternion, ReadyState, Transform, VTOLMode, Vector3,
     YawControlMode,
 };
 pub use sensors::{

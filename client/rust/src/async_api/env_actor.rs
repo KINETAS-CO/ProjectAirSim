@@ -1,9 +1,11 @@
-use serde::Serialize;
 use std::collections::HashMap;
 use tracing::info;
 
 use crate::async_api::client::Client;
 use crate::error::Result;
+use crate::protocol::params::{
+    SetLinkRotationAngleParams, SetLinkRotationRateParams, SetTrajectoryParams,
+};
 
 /// Asynchronous control handle for articulated or scripted environment scenery actors.
 #[derive(Clone)]
@@ -11,34 +13,6 @@ pub struct EnvActor {
     client: Client,
     actor_name: String,
     world_parent_topic: String,
-}
-
-#[derive(Serialize)]
-struct SetTrajectoryParams<'a> {
-    env_actor_name: &'a str,
-    traj_name: &'a str,
-    time_offset: f32,
-    x_offset: f32,
-    y_offset: f32,
-    z_offset: f32,
-    roll_offset: f32,
-    pitch_offset: f32,
-    yaw_offset: f32,
-    to_loop: bool,
-}
-
-#[derive(Serialize)]
-struct SetLinkRotationAngleParams<'a> {
-    env_actor_name: &'a str,
-    link_name: &'a str,
-    angle_deg: f32,
-}
-
-#[derive(Serialize)]
-struct SetLinkRotationRateParams<'a> {
-    env_actor_name: &'a str,
-    link_name: &'a str,
-    rotation_deg_per_sec: f32,
 }
 
 impl EnvActor {

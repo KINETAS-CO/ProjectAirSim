@@ -13,6 +13,7 @@ fn test_async_result_mechanics() {
 
     assert!(!ar.is_done());
     tx.send(Ok(42)).unwrap();
+    assert!(ar.is_done());
     assert!(ar.wait().is_ok());
     assert!(ar.is_done());
     assert_eq!(ar.get_result().unwrap(), 42);

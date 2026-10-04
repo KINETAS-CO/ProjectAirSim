@@ -3,11 +3,12 @@ use nng::{
     options::{Options, RecvTimeout, SendTimeout},
     Protocol, Socket,
 };
+use std::sync::Mutex;
 use std::time::Duration;
 
 /// Low-level NNG transport wrapping Req0 (RPC services) and Pair0 (Topics).
 pub struct NngTransport {
-    req_socket: Socket,
+    req_socket: Mutex<Socket>,
     pair_socket: Socket,
 }
 
@@ -42,18 +43,24 @@ impl NngTransport {
         })?;
 
         Ok(Self {
-            req_socket,
+            req_socket: Mutex::new(req_socket),
             pair_socket,
         })
     }
 
     /// Sends a raw request over Req0 and blocks for the reply.
+    /// Synchronized via Mutex to ensure thread safety across concurrent callers.
     pub fn send_request_sync(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
-        self.req_socket.send(req_bytes).map_err(|(_, e)| {
+        let socket = self
+            .req_socket
+            .lock()
+            .map_err(|_| SimError::TransportError("NngTransport req_socket mutex poisoned".into()))?;
+
+        socket.send(req_bytes).map_err(|(_, e)| {
             SimError::TransportError(format!("Failed to send RPC request: {e}"))
         })?;
 
-        let msg = self.req_socket.recv().map_err(|e| {
+        let msg = socket.recv().map_err(|e| {
             SimError::TransportError(format!("Failed to receive RPC response: {e}"))
         })?;
 
@@ -84,7 +91,9 @@ impl NngTransport {
 
     /// Closes the sockets.
     pub fn close(&self) {
-        self.req_socket.close();
+        if let Ok(socket) = self.req_socket.lock() {
+            socket.close();
+        }
         self.pair_socket.close();
     }
 }

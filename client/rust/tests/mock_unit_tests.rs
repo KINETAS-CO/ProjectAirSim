@@ -74,7 +74,6 @@ fn test_request_envelope_msgpack_json_format() {
         rmpv::Value::Nil
     });
 
-
     // Verify params.data can be unpacked back into TakeoffParams
     let unpacked_params: TakeoffParams =
         rmp_serde::from_slice(&req.params.data).expect("inner params decode failed");

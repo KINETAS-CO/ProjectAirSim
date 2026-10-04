@@ -94,24 +94,6 @@ impl Pose {
     }
 }
 
-/// Geographic coordinate position.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
-pub struct GeoPoint {
-    pub latitude: f64,
-    pub longitude: f64,
-    pub altitude: f64,
-}
-
-impl GeoPoint {
-    pub fn new(latitude: f64, longitude: f64, altitude: f64) -> Self {
-        Self {
-            latitude,
-            longitude,
-            altitude,
-        }
-    }
-}
-
 /// Geographic position coordinates with altitude in meters and lat/lon in degrees.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub struct GeoPosition {

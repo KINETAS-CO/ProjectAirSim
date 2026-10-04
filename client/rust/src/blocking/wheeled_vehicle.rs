@@ -1,8 +1,8 @@
-use serde::Serialize;
 use tracing::info;
 
 use crate::blocking::client::Client;
 use crate::error::Result;
+use crate::protocol::params::{EmptyParams, SingleValueParams};
 
 /// Synchronous blocking control handle for an Unreal AWheeledVehiclePawn.
 #[derive(Clone)]
@@ -11,14 +11,6 @@ pub struct WheeledVehicle {
     vehicle_name: String,
     parent_topic: String,
 }
-
-#[derive(Serialize)]
-struct SingleValueParams {
-    value: f32,
-}
-
-#[derive(Serialize)]
-struct EmptyParams {}
 
 impl WheeledVehicle {
     /// Creates a new blocking WheeledVehicle handle.

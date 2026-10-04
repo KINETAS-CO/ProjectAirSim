@@ -8,6 +8,7 @@ use tracing::info;
 use crate::blocking::async_result::AsyncResult;
 use crate::error::{Result, SimError};
 use crate::protocol::frame::{TopicFrame, TopicInfo};
+use crate::protocol::params::{EmptyParams, FeatureParams, LoadSceneParams};
 use crate::protocol::request::RequestEnvelope;
 use crate::protocol::response::ResponseDecoder;
 use crate::transport::nng_transport::NngTransport;
@@ -441,8 +442,6 @@ impl Client {
 
     /// Tests connection liveness with the simulation server.
     pub fn ping(&self) -> Result<bool> {
-        #[derive(Serialize)]
-        struct EmptyParams {}
         let res: Result<serde_json::Value> = self.request("/Sim/Ping", &EmptyParams {});
         match res {
             Ok(_) => Ok(true),
@@ -453,18 +452,11 @@ impl Client {
 
     /// Retrieves the simulation server's git commit hash.
     pub fn get_build_commit_hash(&self) -> Result<String> {
-        #[derive(Serialize)]
-        struct EmptyParams {}
         self.request("/Sim/GetBuildCommitHash", &EmptyParams {})
     }
 
     /// Enables or disables an interactive feature on the simulation server (e.g. weather, physics).
     pub fn set_interactive_feature(&self, feature_id: &str, enable: bool) -> Result<bool> {
-        #[derive(Serialize)]
-        struct FeatureParams<'a> {
-            feature_id: &'a str,
-            enable: bool,
-        }
         self.request(
             "/Sim/SetInteractiveFeature",
             &FeatureParams {
@@ -478,10 +470,6 @@ impl Client {
     pub fn request_load_scene(&self, scene_config: &str) -> Result<String> {
         self.cancel_all_requests();
         let _ = self.unsubscribe_all();
-        #[derive(Serialize)]
-        struct LoadSceneParams<'a> {
-            scene_config: &'a str,
-        }
         let res: serde_json::Value = self.request(
             "/Sim/LoadScene",
             &LoadSceneParams { scene_config },

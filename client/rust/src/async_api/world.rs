@@ -1,5 +1,4 @@
 use std::path::Path;
-use serde::Serialize;
 use tracing::info;
 
 use crate::async_api::client::Client;
@@ -9,6 +8,7 @@ use crate::async_api::rover::Rover;
 use crate::async_api::static_sensor::StaticSensorActor;
 use crate::async_api::wheeled_vehicle::WheeledVehicle;
 use crate::error::{Result, SimError};
+use crate::protocol::params::EmptyParams;
 use crate::types::{
     write_binvox, BoxAlignment, ColorRGBA, GeoTrajectory, NEDTrajectory, Pose, TimeOfDay,
     Transform, Vector3, WeatherParameter,
@@ -23,9 +23,6 @@ pub struct World {
     drones: Vec<String>,
     config: Option<serde_json::Value>,
 }
-
-#[derive(Serialize)]
-struct EmptyParams {}
 
 impl World {
     /// Connects to and initializes a simulation world.

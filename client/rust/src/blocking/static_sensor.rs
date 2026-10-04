@@ -1,8 +1,8 @@
-use serde::Serialize;
 use tracing::info;
 
 use crate::blocking::client::Client;
 use crate::error::Result;
+use crate::protocol::params::StaticGetImagesParams as GetImagesParams;
 use crate::types::{ImageResponse, ImageType};
 
 /// Synchronous blocking control handle for a stationary sensor platform or camera tower.
@@ -11,11 +11,6 @@ pub struct StaticSensorActor {
     client: Client,
     actor_name: String,
     parent_topic: String,
-}
-
-#[derive(Serialize)]
-struct GetImagesParams<'a> {
-    image_type_ids: &'a [i32],
 }
 
 impl StaticSensorActor {

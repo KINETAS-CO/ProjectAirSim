@@ -1,12 +1,21 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
 use tracing::info;
 
 use crate::blocking::async_result::AsyncResult;
 use crate::blocking::client::Client;
 use crate::error::Result;
 use crate::protocol::frame::TopicFrame;
+use crate::protocol::params::{
+    CameraDrawFrustumParams, CameraLookAtObjectParams, CameraOpticsFOVParams,
+    CameraOpticsFocalLengthParams, CameraOpticsIntensityParams, CameraOpticsTransitionParams,
+    DroneGetImagesParams as GetImagesParams, EmptyParams, GetCameraRayParams, GoHomeParams,
+    MoveByHeadingParams, MoveOnPathParams, MoveToPositionParams, MoveVelocityParams,
+    MoveVelocityZParams, ResetCameraPoseParams, RotateByYawRateParams, RotateToYawParams,
+    SetBatteryDrainRateParams, SetBatteryHealthStatusParams, SetBatteryRemainingParams,
+    SetCameraPoseParams, SetControlSignalsParams, SetExternalForceParams, SetKinematicsParams,
+    SetPoseParams, SetVTOLModeParams, TimeoutParams, UpdateActuatorFaultParams,
+};
 use crate::types::{
     GeoPosition, ImageResponse, ImageType, LandedState, Pose, ReadyState, Transform, VTOLMode,
     Vector3, YawControlMode,
@@ -19,199 +28,6 @@ pub struct Drone {
     drone_name: String,
     parent_topic: String,
 }
-
-#[derive(Serialize)]
-struct TimeoutParams {
-    timeout_sec: f32,
-}
-
-#[derive(Serialize)]
-struct GoHomeParams {
-    timeout_sec: f32,
-    velocity: f32,
-}
-
-#[derive(Serialize)]
-struct SetVTOLModeParams {
-    vtol_mode: i32,
-}
-
-#[derive(Serialize)]
-struct MoveVelocityParams {
-    vx: f64,
-    vy: f64,
-    vz: f64,
-    duration: f64,
-    drivetrain: i32,
-    yaw_is_rate: bool,
-    yaw: f64,
-}
-
-#[derive(Serialize)]
-struct MoveVelocityZParams {
-    vx: f64,
-    vy: f64,
-    z: f64,
-    duration: f64,
-    drivetrain: i32,
-    yaw_is_rate: bool,
-    yaw: f64,
-}
-
-#[derive(Serialize)]
-struct MoveByHeadingParams {
-    heading: f32,
-    speed: f32,
-    vz: f32,
-    duration: f32,
-    heading_margin: f32,
-    yaw_rate: f32,
-    timeout_sec: f32,
-}
-
-#[derive(Serialize)]
-struct MoveOnPathParams<'a> {
-    path: &'a [Vector3],
-    velocity: f32,
-    timeout_sec: f32,
-    drivetrain: i32,
-    yaw_is_rate: bool,
-    yaw: f32,
-    lookahead: f32,
-    adaptive_lookahead: f32,
-}
-
-#[derive(Serialize)]
-struct MoveToPositionParams {
-    x: f64,
-    y: f64,
-    z: f64,
-    velocity: f64,
-    timeout_sec: f32,
-    drivetrain: i32,
-    yaw_is_rate: bool,
-    yaw: f64,
-    lookahead: f64,
-    adaptive_lookahead: f64,
-}
-
-#[derive(Serialize)]
-struct RotateToYawParams {
-    yaw: f32,
-    timeout_sec: f32,
-    margin: f32,
-    yaw_rate: f32,
-}
-
-#[derive(Serialize)]
-struct RotateByYawRateParams {
-    yaw_rate: f32,
-    duration: f32,
-}
-
-#[derive(Serialize)]
-struct SetBatteryRemainingParams {
-    desired_battery_remaining: f32,
-}
-
-#[derive(Serialize)]
-struct SetBatteryDrainRateParams {
-    desired_drain_rate: f32,
-}
-
-#[derive(Serialize)]
-struct SetBatteryHealthStatusParams {
-    battery_health_indicator: bool,
-}
-
-#[derive(Serialize)]
-struct GetCameraRayParams<'a> {
-    camera_id: &'a str,
-    image_type: i32,
-    x: i32,
-    y: i32,
-}
-
-#[derive(Serialize)]
-struct CameraLookAtObjectParams<'a> {
-    object_name: &'a str,
-    wait_for_pose_update: bool,
-}
-
-#[derive(Serialize)]
-struct CameraDrawFrustumParams {
-    image_type: i32,
-    to_enable: bool,
-}
-
-#[derive(Serialize)]
-struct SetCameraPoseParams<'a> {
-    pose: &'a Pose,
-    wait_for_pose_update: bool,
-}
-
-#[derive(Serialize)]
-struct ResetCameraPoseParams {
-    wait_for_pose_update: bool,
-}
-
-#[derive(Serialize)]
-struct CameraOpticsFocalLengthParams {
-    image_type_id: i32,
-    focal_length: f32,
-}
-
-#[derive(Serialize)]
-struct CameraOpticsTransitionParams {
-    image_type_id: i32,
-    transition_threshold: f32,
-}
-
-#[derive(Serialize)]
-struct CameraOpticsIntensityParams {
-    image_type_id: i32,
-    intensity: f32,
-}
-
-#[derive(Serialize)]
-struct CameraOpticsFOVParams {
-    image_type_id: i32,
-    field_of_view: f32,
-}
-
-#[derive(Serialize)]
-struct UpdateActuatorFaultParams {
-    enable: bool,
-}
-
-#[derive(Serialize)]
-struct SetExternalForceParams<'a> {
-    ext_force: &'a [f32],
-}
-
-#[derive(Serialize)]
-struct SetControlSignalsParams<'a> {
-    control_signal_map: &'a HashMap<String, f32>,
-}
-
-#[derive(Serialize)]
-struct SetKinematicsParams<'a> {
-    kinematics: &'a serde_json::Value,
-}
-
-#[derive(Serialize)]
-struct SetPoseParams<'a> {
-    pose: &'a Transform,
-    reset_kinematics: bool,
-}
-
-#[derive(Serialize)]
-struct GetImagesParams {
-    image_type_ids: Vec<i32>,
-}
-
-#[derive(Serialize)]
-struct EmptyParams {}
 
 impl Drone {
     /// Creates a new blocking Drone handle.
