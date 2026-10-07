@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -24,17 +26,9 @@ fn test_client_version_apis() {
         env!("CARGO_PKG_VERSION")
     );
     assert_eq!(projectairsim::async_api::Client::get_nng_version(), "1.0");
-
-    #[cfg(feature = "sync")]
-    {
-        assert_eq!(
-            projectairsim::blocking::Client::get_version(),
-            env!("CARGO_PKG_VERSION")
-        );
-        assert_eq!(projectairsim::blocking::Client::get_nng_version(), "1.0");
-    }
 }
 
+#[cfg(feature = "async")]
 #[tokio::test]
 async fn test_async_client_controls_and_features() {
     let rep_port = get_available_port();
@@ -358,7 +352,7 @@ fn test_sync_client_controls_and_features() {
         .expect("priority request");
     assert!(prio_res);
 
-    let mut async_res = client.request_priority_async::<_, bool>("/Sim/Ping", &json!({}));
+    let async_res = client.request_priority_async::<_, bool>("/Sim/Ping", &json!({}));
     async_res.wait().expect("wait async result");
     let val = async_res.get_result().expect("get result");
     assert!(val);

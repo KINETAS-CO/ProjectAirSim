@@ -5,12 +5,18 @@ use projectairsim::protocol::frame::TopicFrame;
 use projectairsim::protocol::request::RawDataPayload;
 use projectairsim::protocol::response::RawResponseEnvelope;
 use projectairsim::Client;
+use std::net::TcpListener;
 use std::time::Duration;
+
+fn get_available_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    listener.local_addr().expect("local addr").port()
+}
 
 #[tokio::test]
 async fn test_nng_actor_real_socket_rpc_and_topics() {
-    let rep_port = 18990;
-    let pair_port = 18989;
+    let rep_port = get_available_port();
+    let pair_port = get_available_port();
 
     let rep_url = format!("tcp://127.0.0.1:{rep_port}");
     let pair_url = format!("tcp://127.0.0.1:{pair_port}");

@@ -1,15 +1,23 @@
+#![cfg(feature = "async")]
+
 use nng::{Protocol, Socket};
 use projectairsim::protocol::request::RawDataPayload;
 use projectairsim::protocol::response::RawResponseEnvelope;
 use projectairsim::protocol::RequestEnvelope;
+use std::net::TcpListener;
 #[allow(unused_imports)]
 use std::time::Duration;
+
+fn get_available_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    listener.local_addr().expect("local addr").port()
+}
 
 #[cfg(feature = "async")]
 #[tokio::test]
 async fn test_async_actors_complete_suite() {
-    let rep_port = 38990;
-    let pair_port = 38989;
+    let rep_port = get_available_port();
+    let pair_port = get_available_port();
 
     let rep_url = format!("tcp://127.0.0.1:{rep_port}");
     let pair_url = format!("tcp://127.0.0.1:{pair_port}");
@@ -170,8 +178,8 @@ async fn test_async_actors_complete_suite() {
 #[cfg(feature = "sync")]
 #[test]
 fn test_sync_actors_complete_suite() {
-    let rep_port = 38992;
-    let pair_port = 38991;
+    let rep_port = get_available_port();
+    let pair_port = get_available_port();
 
     let rep_url = format!("tcp://127.0.0.1:{rep_port}");
     let pair_url = format!("tcp://127.0.0.1:{pair_port}");
@@ -248,7 +256,7 @@ fn test_sync_actors_complete_suite() {
         .expect("set controls failed"));
 
     // AsyncResult handle for MoveToPosition
-    let mut move_ar = rover.move_to_position_async(5.0, 10.0, 2.0, None, None, None, None);
+    let move_ar = rover.move_to_position_async(5.0, 10.0, 2.0, None, None, None, None);
     assert!(move_ar.wait_timeout(Duration::from_secs(2)).is_ok());
     assert!(move_ar.get_result().unwrap());
 

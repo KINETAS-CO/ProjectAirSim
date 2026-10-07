@@ -1,18 +1,25 @@
 use super::Transport;
+#[cfg(any(feature = "async", feature = "sync"))]
 use crate::error::{Result, SimError};
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Default)]
+struct MockTransportInner {
+    service_responses: Mutex<VecDeque<Vec<u8>>>,
+    topic_messages: Mutex<VecDeque<Vec<u8>>>,
+    sent_requests: Mutex<Vec<Vec<u8>>>,
+    sent_topic_frames: Mutex<Vec<Vec<u8>>>,
+}
 
 /// In-memory mock transport mirroring C++ FakeNNGI.
 ///
 /// Enables offline unit testing of request serialization, response parsing,
 /// topic dispatching, and error handling without running the simulator.
-#[derive(Debug, Default)]
+/// Internally backed by an `Arc`, allowing cheap cloning and thread-safe sharing.
+#[derive(Clone, Debug, Default)]
 pub struct MockTransport {
-    service_responses: Mutex<VecDeque<Vec<u8>>>,
-    topic_messages: Mutex<VecDeque<Vec<u8>>>,
-    sent_requests: Mutex<Vec<Vec<u8>>>,
-    sent_topic_frames: Mutex<Vec<Vec<u8>>>,
+    inner: Arc<MockTransportInner>,
 }
 
 impl MockTransport {
@@ -22,30 +29,62 @@ impl MockTransport {
 
     /// Clears all recorded and queued messages.
     pub fn reset(&self) {
-        self.service_responses.lock().unwrap().clear();
-        self.topic_messages.lock().unwrap().clear();
-        self.sent_requests.lock().unwrap().clear();
-        self.sent_topic_frames.lock().unwrap().clear();
+        self.inner
+            .service_responses
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.inner
+            .topic_messages
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.inner
+            .sent_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.inner
+            .sent_topic_frames
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
     }
 
     /// Queues a raw response buffer to be returned by the next `send_request()`.
     pub fn push_service_response(&self, resp: Vec<u8>) {
-        self.service_responses.lock().unwrap().push_back(resp);
+        self.inner
+            .service_responses
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push_back(resp);
     }
 
     /// Queues a raw topic message buffer to be returned by `recv_topic_frame()`.
     pub fn push_topic_message(&self, msg: Vec<u8>) {
-        self.topic_messages.lock().unwrap().push_back(msg);
+        self.inner
+            .topic_messages
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push_back(msg);
     }
 
     /// Returns a snapshot of all RPC requests sent through this transport.
     pub fn sent_requests(&self) -> Vec<Vec<u8>> {
-        self.sent_requests.lock().unwrap().clone()
+        self.inner
+            .sent_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Returns a snapshot of all topic frames sent through this transport.
     pub fn sent_topic_frames(&self) -> Vec<Vec<u8>> {
-        self.sent_topic_frames.lock().unwrap().clone()
+        self.inner
+            .sent_topic_frames
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
@@ -53,8 +92,16 @@ impl MockTransport {
 impl Transport for MockTransport {
     #[cfg(feature = "async")]
     async fn send_request(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
-        self.sent_requests.lock().unwrap().push(req_bytes.to_vec());
-        let mut queue = self.service_responses.lock().unwrap();
+        self.inner
+            .sent_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(req_bytes.to_vec());
+        let mut queue = self
+            .inner
+            .service_responses
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         queue.pop_front().ok_or_else(|| {
             SimError::TransportError("MockTransport: No queued service response available".into())
         })
@@ -62,23 +109,36 @@ impl Transport for MockTransport {
 
     #[cfg(feature = "async")]
     async fn send_topic_frame(&self, frame_bytes: &[u8]) -> Result<()> {
-        self.sent_topic_frames
+        self.inner
+            .sent_topic_frames
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push(frame_bytes.to_vec());
         Ok(())
     }
 
     #[cfg(feature = "async")]
     async fn recv_topic_frame(&self, _timeout_ms: u32) -> Result<Option<Vec<u8>>> {
-        let mut queue = self.topic_messages.lock().unwrap();
+        let mut queue = self
+            .inner
+            .topic_messages
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         Ok(queue.pop_front())
     }
 
     #[cfg(feature = "sync")]
     fn send_request_sync(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
-        self.sent_requests.lock().unwrap().push(req_bytes.to_vec());
-        let mut queue = self.service_responses.lock().unwrap();
+        self.inner
+            .sent_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(req_bytes.to_vec());
+        let mut queue = self
+            .inner
+            .service_responses
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         queue.pop_front().ok_or_else(|| {
             SimError::TransportError("MockTransport: No queued service response available".into())
         })
@@ -86,16 +146,21 @@ impl Transport for MockTransport {
 
     #[cfg(feature = "sync")]
     fn send_topic_frame_sync(&self, frame_bytes: &[u8]) -> Result<()> {
-        self.sent_topic_frames
+        self.inner
+            .sent_topic_frames
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push(frame_bytes.to_vec());
         Ok(())
     }
 
     #[cfg(feature = "sync")]
     fn recv_topic_frame_sync(&self, _timeout_ms: u32) -> Result<Option<Vec<u8>>> {
-        let mut queue = self.topic_messages.lock().unwrap();
+        let mut queue = self
+            .inner
+            .topic_messages
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         Ok(queue.pop_front())
     }
 }

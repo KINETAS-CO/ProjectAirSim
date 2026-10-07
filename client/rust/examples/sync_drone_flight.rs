@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     drone.arm()?;
 
     info!("Initiating takeoff with C++-style AsyncResult handle...");
-    let mut takeoff_ar: AsyncResult<bool> = drone.takeoff_async(15.0);
+    let takeoff_ar: AsyncResult<bool> = drone.takeoff_async(15.0);
 
     // Poll status while waiting
     while !takeoff_ar.is_done() {

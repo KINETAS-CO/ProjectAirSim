@@ -2,6 +2,7 @@ use projectairsim::error::SimError;
 use projectairsim::protocol::{
     FrameType, RawDataPayload, RequestEnvelope, ResponseDecoder, TopicFrame, TopicInfo,
 };
+#[cfg(any(feature = "async", feature = "sync"))]
 use projectairsim::transport::MockTransport;
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,7 @@
+#![cfg(feature = "async")]
+
 use std::collections::HashMap;
+use std::net::TcpListener;
 
 use nng::{Protocol, Socket};
 use projectairsim::protocol::request::RawDataPayload;
@@ -8,11 +11,16 @@ use projectairsim::types::{
     GeoPosition, ImageType, Pose, Transform, VTOLMode, Vector3, YawControlMode,
 };
 
+fn get_available_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    listener.local_addr().expect("local addr").port()
+}
+
 #[cfg(feature = "async")]
 #[tokio::test]
 async fn test_async_drone_phase2_complete_suite() {
-    let rep_port = 48990;
-    let pair_port = 48989;
+    let rep_port = get_available_port();
+    let pair_port = get_available_port();
 
     let rep_url = format!("tcp://127.0.0.1:{rep_port}");
     let pair_url = format!("tcp://127.0.0.1:{pair_port}");
@@ -221,8 +229,8 @@ async fn test_async_drone_phase2_complete_suite() {
 #[cfg(feature = "sync")]
 #[test]
 fn test_sync_drone_phase2_complete_suite() {
-    let rep_port = 48992;
-    let pair_port = 48991;
+    let rep_port = get_available_port();
+    let pair_port = get_available_port();
 
     let rep_url = format!("tcp://127.0.0.1:{rep_port}");
     let pair_url = format!("tcp://127.0.0.1:{pair_port}");

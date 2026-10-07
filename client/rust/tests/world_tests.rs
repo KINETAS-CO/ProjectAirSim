@@ -1,16 +1,32 @@
-use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 
+#[cfg(any(feature = "async", feature = "sync"))]
+use std::net::TcpListener;
+#[cfg(any(feature = "async", feature = "sync"))]
 use nng::{Protocol, Socket};
 use projectairsim::config::{load_scene_config, parse_jsonc, strip_jsonc_comments};
+#[cfg(any(feature = "async", feature = "sync"))]
 use projectairsim::protocol::request::RawDataPayload;
+#[cfg(any(feature = "async", feature = "sync"))]
 use projectairsim::protocol::response::RawResponseEnvelope;
+#[cfg(any(feature = "async", feature = "sync"))]
 use projectairsim::protocol::RequestEnvelope;
 use projectairsim::types::{
-    write_binvox, BoxAlignment, ColorRGBA, GeoTrajectory, NEDTrajectory, Pose, TimeOfDay,
-    Vector3, WeatherParameter,
+    write_binvox, BoxAlignment, ColorRGBA, WeatherParameter,
 };
+#[cfg(any(feature = "async", feature = "sync"))]
+use projectairsim::types::{NEDTrajectory, Pose, Vector3};
+#[cfg(feature = "async")]
+use projectairsim::types::{GeoTrajectory, TimeOfDay};
+#[cfg(feature = "async")]
+use std::collections::HashMap;
+
+#[cfg(any(feature = "async", feature = "sync"))]
+fn get_available_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    listener.local_addr().expect("local addr").port()
+}
 
 #[test]
 fn test_strip_jsonc_and_config_loader() {
@@ -164,8 +180,8 @@ fn test_color_rgba_and_enums() {
 #[cfg(feature = "async")]
 #[tokio::test]
 async fn test_async_world_phase3_complete_suite() {
-    let rep_port = 49990;
-    let pair_port = 49989;
+    let rep_port = get_available_port();
+    let pair_port = get_available_port();
 
     let rep_url = format!("tcp://127.0.0.1:{rep_port}");
     let pair_url = format!("tcp://127.0.0.1:{pair_port}");
@@ -473,8 +489,8 @@ async fn test_async_world_phase3_complete_suite() {
 #[cfg(feature = "sync")]
 #[test]
 fn test_blocking_world_phase3_suite() {
-    let rep_port = 49992;
-    let pair_port = 49991;
+    let rep_port = get_available_port();
+    let pair_port = get_available_port();
 
     let rep_url = format!("tcp://127.0.0.1:{rep_port}");
     let pair_url = format!("tcp://127.0.0.1:{pair_port}");

@@ -1,11 +1,10 @@
 use serde::{de::DeserializeOwned, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::mpsc::channel;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use tracing::info;
 
-use crate::blocking::async_result::AsyncResult;
+use crate::blocking::async_result::{async_result_channel, AsyncResult};
 use crate::error::{Result, SimError};
 use crate::protocol::frame::{TopicFrame, TopicInfo};
 use crate::protocol::params::{EmptyParams, FeatureParams, LoadSceneParams};
@@ -16,7 +15,7 @@ use crate::transport::nng_transport::NngTransport;
 pub const DEFAULT_PORT_TOPICS: u16 = 8989;
 pub const DEFAULT_PORT_SERVICES: u16 = 8990;
 
-type TopicCallback = Box<dyn Fn(TopicFrame) + Send + 'static>;
+type TopicCallback = Arc<dyn Fn(TopicFrame) + Send + Sync + 'static>;
 
 /// Synchronous iterator yielding incoming topic frames.
 pub struct TopicIterator {
@@ -65,7 +64,7 @@ pub struct BlockingTopicsHub {
     callbacks: Arc<Mutex<HashMap<String, Vec<TopicCallback>>>>,
     channels: Arc<Mutex<HashMap<String, Vec<std::sync::mpsc::Sender<TopicFrame>>>>>,
     all_channels: Arc<Mutex<Vec<std::sync::mpsc::Sender<TopicFrame>>>>,
-    topic_infos: Arc<Mutex<Vec<TopicInfo>>>,
+    topic_infos: Arc<RwLock<Vec<TopicInfo>>>,
     is_running: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -75,7 +74,7 @@ impl BlockingTopicsHub {
         let callbacks = Arc::new(Mutex::new(HashMap::<String, Vec<TopicCallback>>::new()));
         let channels = Arc::new(Mutex::new(HashMap::<String, Vec<std::sync::mpsc::Sender<TopicFrame>>>::new()));
         let all_channels = Arc::new(Mutex::new(Vec::<std::sync::mpsc::Sender<TopicFrame>>::new()));
-        let topic_infos = Arc::new(Mutex::new(Vec::new()));
+        let topic_infos = Arc::new(RwLock::new(Vec::new()));
         let is_running = Arc::new(AtomicBool::new(true));
 
         let t_transport = Arc::clone(&transport);
@@ -102,31 +101,46 @@ impl BlockingTopicsHub {
                                     if let Ok(infos) =
                                         rmp_serde::from_slice::<Vec<TopicInfo>>(frame.body())
                                     {
-                                        if let Ok(mut lock) = t_topic_infos.lock() {
+                                        if let Ok(mut lock) = t_topic_infos.write() {
                                             *lock = infos;
                                         }
                                     }
                                 }
 
-                                // 1. Specific callbacks
-                                if let Ok(mut cbs_lock) = t_callbacks.lock() {
-                                    if let Some(cbs) = cbs_lock.get_mut(frame.topic()) {
-                                        for cb in cbs.iter_mut() {
-                                            cb(frame.clone());
-                                        }
+                                // 1. Specific callbacks: snapshot with Arc and execute outside the lock
+                                let callbacks_to_run: Vec<TopicCallback> = {
+                                    if let Ok(cbs_lock) = t_callbacks.lock() {
+                                        cbs_lock.get(frame.topic()).cloned().unwrap_or_default()
+                                    } else {
+                                        Vec::new()
                                     }
+                                };
+                                for cb in callbacks_to_run {
+                                    cb(frame.clone());
                                 }
 
-                                // 2. Specific channels
-                                if let Ok(mut chs_lock) = t_channels.lock() {
-                                    if let Some(chs) = chs_lock.get_mut(frame.topic()) {
-                                        chs.retain(|sender| sender.send(frame.clone()).is_ok());
+                                // 2. Specific channels: snapshot senders and send outside the lock
+                                let specific_channels: Vec<std::sync::mpsc::Sender<TopicFrame>> = {
+                                    if let Ok(chs_lock) = t_channels.lock() {
+                                        chs_lock.get(frame.topic()).cloned().unwrap_or_default()
+                                    } else {
+                                        Vec::new()
                                     }
+                                };
+                                for sender in specific_channels {
+                                    let _ = sender.send(frame.clone());
                                 }
 
-                                // 3. Global broadcast channels
-                                if let Ok(mut all_lock) = t_all_channels.lock() {
-                                    all_lock.retain(|sender| sender.send(frame.clone()).is_ok());
+                                // 3. Global broadcast channels: snapshot and send outside the lock
+                                let all_senders: Vec<std::sync::mpsc::Sender<TopicFrame>> = {
+                                    if let Ok(all_lock) = t_all_channels.lock() {
+                                        all_lock.clone()
+                                    } else {
+                                        Vec::new()
+                                    }
+                                };
+                                for sender in all_senders {
+                                    let _ = sender.send(frame.clone());
                                 }
                             }
                         }
@@ -153,11 +167,12 @@ impl BlockingTopicsHub {
         })
     }
 
-    pub fn subscribe_callback(&self, topic: &str, callback: TopicCallback) -> Result<()> {
-        let frame = TopicFrame::subscribe(topic).to_bytes()?;
+    pub fn subscribe_callback(&self, topic: impl Into<String>, callback: TopicCallback) -> Result<()> {
+        let topic_str = topic.into();
+        let frame = TopicFrame::subscribe(&topic_str).to_bytes()?;
         self.transport.send_topic_frame_sync(&frame)?;
         let mut cbs = self.callbacks.lock().unwrap();
-        cbs.entry(topic.to_string()).or_default().push(callback);
+        cbs.entry(topic_str).or_default().push(callback);
         Ok(())
     }
 
@@ -211,7 +226,10 @@ impl BlockingTopicsHub {
     }
 
     pub fn get_topic_infos(&self) -> Vec<TopicInfo> {
-        self.topic_infos.lock().unwrap().clone()
+        self.topic_infos
+            .read()
+            .map(|infos| infos.clone())
+            .unwrap_or_default()
     }
 
     pub fn get_active_subscriptions(&self) -> Vec<String> {
@@ -245,11 +263,120 @@ impl Drop for BlockingTopicsHub {
     }
 }
 
+type RpcJob = Box<dyn FnOnce() + Send + 'static>;
+
+struct RpcWorkerState {
+    priority: VecDeque<RpcJob>,
+    normal: VecDeque<RpcJob>,
+    is_running: bool,
+}
+
+/// Background worker managing queued asynchronous RPC requests sequentially over Req0.
+pub struct BlockingRpcWorker {
+    queue: Arc<(Mutex<RpcWorkerState>, Condvar)>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl BlockingRpcWorker {
+    pub fn start() -> Result<Self> {
+        let queue = Arc::new((
+            Mutex::new(RpcWorkerState {
+                priority: VecDeque::new(),
+                normal: VecDeque::new(),
+                is_running: true,
+            }),
+            Condvar::new(),
+        ));
+
+        let q_clone = Arc::clone(&queue);
+        let thread = std::thread::Builder::new()
+            .name("airsim-blocking-rpc".into())
+            .spawn(move || {
+                let (lock, cvar) = &*q_clone;
+                loop {
+                    let job = {
+                        let mut state = lock.lock().unwrap();
+                        loop {
+                            if !state.is_running {
+                                return;
+                            }
+                            if let Some(job) = state.priority.pop_front() {
+                                break job;
+                            }
+                            if let Some(job) = state.normal.pop_front() {
+                                break job;
+                            }
+                            state = cvar.wait(state).unwrap();
+                        }
+                    };
+                    job();
+                }
+            })
+            .map_err(|e| SimError::TransportError(format!("Failed to spawn blocking rpc worker: {e}")))?;
+
+        Ok(Self {
+            queue,
+            thread: Some(thread),
+        })
+    }
+
+    pub fn enqueue_priority(&self, job: RpcJob) {
+        let (lock, cvar) = &*self.queue;
+        if let Ok(mut state) = lock.lock() {
+            if state.is_running {
+                state.priority.push_back(job);
+                cvar.notify_one();
+            }
+        }
+    }
+
+    pub fn enqueue_normal(&self, job: RpcJob) {
+        let (lock, cvar) = &*self.queue;
+        if let Ok(mut state) = lock.lock() {
+            if state.is_running {
+                state.normal.push_back(job);
+                cvar.notify_one();
+            }
+        }
+    }
+
+    pub fn cancel_all(&self) {
+        let (lock, _) = &*self.queue;
+        if let Ok(mut state) = lock.lock() {
+            state.priority.clear();
+            state.normal.clear();
+        }
+    }
+
+    pub fn stop(&mut self) {
+        let (lock, cvar) = &*self.queue;
+        if let Ok(mut state) = lock.lock() {
+            if !state.is_running {
+                return;
+            }
+            state.is_running = false;
+            state.priority.clear();
+            state.normal.clear();
+            cvar.notify_all();
+        }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl Drop for BlockingRpcWorker {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 /// Synchronous blocking client for ProjectAirSim simulation server.
 #[derive(Clone)]
 pub struct Client {
     transport: Arc<NngTransport>,
     topics_hub: Arc<BlockingTopicsHub>,
+    rpc_worker: Arc<BlockingRpcWorker>,
     request_id: Arc<AtomicI32>,
 }
 
@@ -279,9 +406,11 @@ impl Client {
     /// Creates a synchronous client wrapping an existing NngTransport instance.
     pub fn from_transport(transport: Arc<NngTransport>) -> Result<Self> {
         let topics_hub = Arc::new(BlockingTopicsHub::start(Arc::clone(&transport))?);
+        let rpc_worker = Arc::new(BlockingRpcWorker::start()?);
         Ok(Self {
             transport,
             topics_hub,
+            rpc_worker,
             request_id: Arc::new(AtomicI32::new(1)),
         })
     }
@@ -292,26 +421,27 @@ impl Client {
         method: &str,
         params: &P,
     ) -> AsyncResult<R> {
-        let (tx, rx) = channel();
+        let (sender, ar) = async_result_channel();
         let id = self.request_id.fetch_add(1, Ordering::Relaxed);
 
         let req_bytes = match RequestEnvelope::new(id, method, params).and_then(|r| r.to_bytes()) {
             Ok(b) => b,
             Err(e) => {
-                let _ = tx.send(Err(e));
-                return AsyncResult::new(rx);
+                sender.send(Err(e));
+                return ar;
             }
         };
 
         let transport = Arc::clone(&self.transport);
-        std::thread::spawn(move || {
+        let job: RpcJob = Box::new(move || {
             let res = transport
                 .send_request_sync(&req_bytes)
                 .and_then(|resp_bytes| ResponseDecoder::decode_typed::<R>(&resp_bytes));
-            let _ = tx.send(res);
+            sender.send(res);
         });
 
-        AsyncResult::new(rx)
+        self.rpc_worker.enqueue_normal(job);
+        ar
     }
 
     /// Dispatches a high-priority asynchronous RPC request.
@@ -320,7 +450,27 @@ impl Client {
         method: &str,
         params: &P,
     ) -> AsyncResult<R> {
-        self.request_async(method, params)
+        let (sender, ar) = async_result_channel();
+        let id = self.request_id.fetch_add(1, Ordering::Relaxed);
+
+        let req_bytes = match RequestEnvelope::new(id, method, params).and_then(|r| r.to_bytes()) {
+            Ok(b) => b,
+            Err(e) => {
+                sender.send(Err(e));
+                return ar;
+            }
+        };
+
+        let transport = Arc::clone(&self.transport);
+        let job: RpcJob = Box::new(move || {
+            let res = transport
+                .send_request_sync(&req_bytes)
+                .and_then(|resp_bytes| ResponseDecoder::decode_typed::<R>(&resp_bytes));
+            sender.send(res);
+        });
+
+        self.rpc_worker.enqueue_priority(job);
+        ar
     }
 
     /// Dispatches a synchronous RPC request and blocks until the reply is received.
@@ -345,18 +495,18 @@ impl Client {
         self.request(method, params)
     }
 
-    /// Cancels all pending requests (in blocking mode, resets client state).
+    /// Cancels all pending queued requests that have not yet begun execution.
     pub fn cancel_all_requests(&self) {
-        // In blocking mode, in-flight requests on detached threads complete or are ignored by the caller.
+        self.rpc_worker.cancel_all();
     }
 
     /// Subscribes to a simulation topic with a callback function invoked on a background thread.
     pub fn subscribe<F>(&self, topic: impl Into<String>, callback: F) -> Result<()>
     where
-        F: Fn(TopicFrame) + Send + 'static,
+        F: Fn(TopicFrame) + Send + Sync + 'static,
     {
         self.topics_hub
-            .subscribe_callback(&topic.into(), Box::new(callback))
+            .subscribe_callback(topic, Arc::new(callback))
     }
 
     /// Subscribes to a simulation topic and returns a synchronous iterator yielding incoming frames.

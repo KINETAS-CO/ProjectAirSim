@@ -9,6 +9,7 @@ pub mod nng_actor;
 #[cfg(feature = "async")]
 pub use nng_actor::NngActor;
 
+#[cfg(any(feature = "async", feature = "sync"))]
 use crate::error::Result;
 
 #[cfg_attr(feature = "async", async_trait::async_trait)]

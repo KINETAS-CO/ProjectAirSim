@@ -1067,7 +1067,7 @@ impl Drone {
     /// Subscribes to a real-time telemetry topic streamed for this vehicle.
     pub fn subscribe_telemetry<F>(&self, subtopic: &str, callback: F) -> Result<()>
     where
-        F: Fn(TopicFrame) + Send + 'static,
+        F: Fn(TopicFrame) + Send + Sync + 'static,
     {
         let topic = format!("{}/{}", self.base_topic(), subtopic);
         self.client.subscribe(topic, callback)

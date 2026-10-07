@@ -24,7 +24,7 @@ The server opens two network ports:
 2. Port 8989 (Topic Data Streams):
    This port uses the NNG `Pair0` protocol for high-throughput sensor telemetry.
    The server streams three-element MessagePack arrays called `TopicFrame` structures.
-   Each frame contains a topic string, a time stamp, and raw payload bytes.
+   Each frame contains a frame type identifier, a topic string, and raw payload bytes.
 
 ### Mock Transport for Unit Tests
 
@@ -34,23 +34,30 @@ Tests can run hermetically on developer machines without an installed simulator 
 
 ## Asynchronous Architecture (`async`)
 
-In asynchronous mode, the `Client` spawns background Tokio tasks.
-One task manages the `Req0` socket for request and response handling.
-A second task manages the `Pair0` socket for incoming topic frames.
+In asynchronous mode, the `Client` wraps an `NngActor` that coordinates network traffic.
+Because low-level NNG C FFI calls are synchronous blocking operations, the actor manages
+two dedicated OS worker threads (`airsim-rpc-actor` and `airsim-topics-actor`) rather than
+running directly on Tokio's cooperative task threads.
 
-When a topic frame arrives, the reader task matches the topic name.
-The task forwards the frame payload to registered `broadcast` channel receivers.
+Asynchronous Tokio channels bridge the actor's dedicated threads to async client code:
+- An `mpsc` queue and paired `oneshot` reply channels route serialized RPC requests over `Req0`.
+- An incoming `Pair0` socket reader forwards topic payloads to registered `broadcast` channel receivers.
 Application code calls `subscribe` to receive these broadcast streams.
 
 ## Synchronous Architecture (`sync`)
 
-In synchronous mode, the library mirrors the C++ client design.
-Each asynchronous request returns an `AsyncResult<T>` handle.
-The handle holds a receiver channel connected to a background worker thread.
+In synchronous mode, the library mirrors the C++ client design while providing thread-safe concurrency.
+Each asynchronous request returns a cloneable `AsyncResult<T>` handle.
+The handle is backed by an `Arc`-managed synchronization state with a `Condvar` and atomic status flags:
 
-Applications can poll `is_done()` on the handle.
-Applications can also call `wait_timeout()` with a specified duration.
-When the background operation completes, `get_result()` returns the unpacked value.
+- `is_done()` provides lock-free polling of completion status.
+- `wait_timeout()` blocks the caller for up to a specified duration.
+- `get_result()` blocks until completion and retrieves the unpacked value.
+- Dropping the worker's sender handle automatically marks pending results as cancelled.
+
+Topic stream handling is managed by `BlockingTopicsHub`, which runs a background listener thread.
+Callbacks are stored as `Arc<dyn Fn(TopicFrame) + Send + Sync>` closures and snapshotted under a brief
+lock before invocation, ensuring user callbacks can safely invoke client APIs without re-entrant deadlocks.
 
 ## Configuration Parser
 

@@ -17,11 +17,14 @@ It connects to port 8990 for remote procedure calls and to port 8989 for topic d
   Sends a ping message to the simulation server.
   Returns true when the server responds.
 
-- `client.get_client_version()`:
-  Returns the version string of the client library.
+- `Client::get_version()`:
+  Returns the crate package version string of the client library.
 
-- `client.get_server_version()`:
-  Returns the version string reported by the simulation server.
+- `Client::get_nng_version()`:
+  Returns the underlying NNG messaging library version string.
+
+- `client.get_build_commit_hash()`:
+  Returns the build commit hash reported by the simulation server.
 
 - `client.subscribe(topic)`:
   Subscribes to a real-time topic on port 8989.
@@ -191,8 +194,8 @@ The `EnvActor` interface controls non-player environment actors and scenery obje
 
 ### Methods
 
-- `actor.set_trajectory(traj_name, loop, offset_x, offset_y, offset_z, pitch, roll, yaw, duration)`:
-  Assigns a named trajectory with spatial offsets and rotations.
+- `actor.set_trajectory(traj_name, to_loop, time_offset, x_offset, y_offset, z_offset, roll_offset, pitch_offset, yaw_offset)`:
+  Assigns a named trajectory asset with time offset, spatial offsets, and Euler rotation offsets.
 
 - `actor.set_link_rotation_angles(angles_map)`:
   Rotates articulated joints on the actor to specified degree angles.
