@@ -39,29 +39,47 @@ goto usage_error
 set "ROOT_DIR=%~dp0"
 set "MANIFEST_PATH=%ROOT_DIR%client\rust\Cargo.toml"
 
+if exist "%USERPROFILE%\.cargo\bin\cargo.exe" (
+  set "PATH=%USERPROFILE%\.cargo\bin;!PATH!"
+)
+
 where /q cargo
 if errorlevel 1 (
   echo [ERROR] cargo was not found. Please install Rust from https://rustup.rs/
   exit /b 1
 )
 
-set "CARGO_FLAGS=--all-features"
+set "BUILD_FLAGS="
 if /I "%BUILD_TYPE%"=="release" (
-  set "CARGO_FLAGS=!CARGO_FLAGS! --release"
+  set "BUILD_FLAGS=--release"
 )
 
-cargo build --manifest-path "%MANIFEST_PATH%" !CARGO_FLAGS!
+echo Building ProjectAirSim Rust Client (async)...
+cargo build --manifest-path "%MANIFEST_PATH%" --no-default-features --features async !BUILD_FLAGS!
+if errorlevel 1 exit /b 1
+
+echo Building ProjectAirSim Rust Client (sync)...
+cargo build --manifest-path "%MANIFEST_PATH%" --no-default-features --features sync !BUILD_FLAGS!
 if errorlevel 1 exit /b 1
 
 if /I "%RUN_TESTS%"=="ON" (
   cargo nextest --version >nul 2>&1
   if not errorlevel 1 (
     set "CI=1"
-    cargo nextest run --manifest-path "%MANIFEST_PATH%" !CARGO_FLAGS!
+    echo Running async tests with nextest...
+    cargo nextest run --manifest-path "%MANIFEST_PATH%" --no-default-features --features async !BUILD_FLAGS!
+    if errorlevel 1 exit /b 1
+    echo Running sync tests with nextest...
+    cargo nextest run --manifest-path "%MANIFEST_PATH%" --no-default-features --features sync !BUILD_FLAGS!
+    if errorlevel 1 exit /b 1
   ) else (
-    cargo test --manifest-path "%MANIFEST_PATH%" !CARGO_FLAGS!
+    echo Running async tests with cargo test...
+    cargo test --manifest-path "%MANIFEST_PATH%" --no-default-features --features async !BUILD_FLAGS!
+    if errorlevel 1 exit /b 1
+    echo Running sync tests with cargo test...
+    cargo test --manifest-path "%MANIFEST_PATH%" --no-default-features --features sync !BUILD_FLAGS!
+    if errorlevel 1 exit /b 1
   )
-  if errorlevel 1 exit /b 1
 )
 
 exit /b 0

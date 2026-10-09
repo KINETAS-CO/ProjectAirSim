@@ -1,0 +1,11 @@
+# Cargo configuration for ProjectAirSim Rust Client
+
+[env]
+CMAKE = { value = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe", force = false }
+
+[alias]
+# Run nextest in default async mode
+nextest-async = "nextest run --no-default-features --features async"
+
+# Run nextest in sync mode
+nextest-sync = "nextest run --no-default-features --features sync"

@@ -1,0 +1,8 @@
+# Cargo configuration for ProjectAirSim
+
+[alias]
+# Run nextest in default async mode
+nextest-async = "nextest run --manifest-path client/rust/Cargo.toml --no-default-features --features async"
+
+# Run nextest in sync mode
+nextest-sync = "nextest run --manifest-path client/rust/Cargo.toml --no-default-features --features sync"

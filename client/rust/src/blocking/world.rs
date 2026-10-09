@@ -1,6 +1,3 @@
-use std::path::Path;
-use tracing::info;
-
 use crate::blocking::async_result::AsyncResult;
 use crate::blocking::client::Client;
 use crate::blocking::drone::Drone;
@@ -8,21 +5,17 @@ use crate::blocking::env_actor::EnvActor;
 use crate::blocking::rover::Rover;
 use crate::blocking::static_sensor::StaticSensorActor;
 use crate::blocking::wheeled_vehicle::WheeledVehicle;
-use crate::error::{Result, SimError};
-use crate::protocol::params::EmptyParams;
+use crate::error::Result;
 use crate::types::{
-    write_binvox, BoxAlignment, ColorRGBA, GeoTrajectory, NEDTrajectory, Pose, TimeOfDay,
-    Transform, Vector3, WeatherParameter,
+    BoxAlignment, ColorRGBA, GeoTrajectory, NEDTrajectory, Pose, TimeOfDay, Vector3,
+    WeatherParameter,
 };
 
-/// High-level synchronous blocking interface for managing the ProjectAirSim simulation world,
-/// environment, clock stepping, scene actors, object spawning, and debug visualization.
+/// Synchronous blocking simulation world controller.
 #[derive(Clone)]
 pub struct World {
+    inner: crate::async_api::World,
     client: Client,
-    parent_topic: String,
-    drones: Vec<String>,
-    config: Option<serde_json::Value>,
 }
 
 impl World {
@@ -31,73 +24,23 @@ impl World {
     /// If `scene_config` is provided (either as a path to a JSON/JSONC configuration file
     /// or raw JSON/JSONC text), it is parsed, recursively expanded, and loaded into the simulator.
     pub fn new(client: Client, scene_config: Option<&str>) -> Result<Self> {
-        let mut loaded_config = None;
-        let mut drones = Vec::new();
-        let mut parent_topic = "/Sim".to_string();
-
-        if let Some(config_str) = scene_config {
-            let parsed_config = if Path::new(config_str).exists() {
-                crate::config::load_scene_config(config_str, None::<&str>, None)?
-            } else {
-                crate::config::parse_jsonc(config_str)?
-            };
-
-            info!("Loading scene into ProjectAirSim server...");
-            let load_res: serde_json::Value = client.request(
-                "/Sim/LoadScene",
-                &serde_json::json!({
-                    "scene_config": parsed_config.to_string(),
-                }),
-            )?;
-            info!("Scene loaded successfully");
-
-            if let Some(res_str) = load_res.as_str() {
-                if !res_str.is_empty() {
-                    parent_topic = format!("/Sim/{res_str}");
-                }
-            } else if let Some(topic) = parsed_config.get("parent_topic").and_then(|t| t.as_str()) {
-                parent_topic = topic.to_string();
-            }
-
-            // Discover drone actor names from config
-            if let Some(d_list) = parsed_config.get("drones").and_then(|d| d.as_array()) {
-                for d in d_list {
-                    if let Some(name) = d.get("name").and_then(|n| n.as_str()) {
-                        drones.push(name.to_string());
-                    }
-                }
-            }
-            if let Some(actors) = parsed_config.get("actors").and_then(|a| a.as_array()) {
-                for a in actors {
-                    if a.get("type").and_then(|t| t.as_str()) == Some("robot") {
-                        if let Some(name) = a.get("name").and_then(|n| n.as_str()) {
-                            if !drones.contains(&name.to_string()) {
-                                drones.push(name.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-
-            loaded_config = Some(parsed_config);
-        }
-
-        Ok(Self {
-            client,
-            parent_topic,
-            drones,
-            config: loaded_config,
-        })
+        let async_client = client.inner().clone();
+        let inner = client
+            .runtime()
+            .block_on(crate::async_api::World::new(async_client, scene_config))?;
+        Ok(Self { inner, client })
     }
 
     /// Creates a World handle bound to a known parent topic prefix.
     pub fn with_parent_topic(client: Client, parent_topic: impl Into<String>) -> Self {
-        Self {
-            client,
-            parent_topic: parent_topic.into(),
-            drones: Vec::new(),
-            config: None,
-        }
+        let async_client = client.inner().clone();
+        let inner = crate::async_api::World::with_parent_topic(async_client, parent_topic);
+        Self { inner, client }
+    }
+
+    /// Creates a blocking World handle wrapping an existing async World handle.
+    pub fn from_inner(inner: crate::async_api::World, client: Client) -> Self {
+        Self { inner, client }
     }
 
     /// Returns a reference to the blocking Client.
@@ -107,138 +50,112 @@ impl World {
 
     /// Returns the active parent topic prefix for this world (e.g. `/Sim` or `/Sim/Scene_1`).
     pub fn parent_topic(&self) -> &str {
-        &self.parent_topic
+        self.inner.parent_topic()
     }
 
     /// Returns discovered drone actor names in this scene.
     pub fn drones(&self) -> &[String] {
-        &self.drones
+        self.inner.drones()
     }
 
     /// Returns the parsed scene configuration JSON, if loaded.
     pub fn configuration(&self) -> Option<&serde_json::Value> {
-        self.config.as_ref()
+        self.inner.configuration()
     }
 
-    fn topic(&self, method: &str) -> String {
-        format!("{}/{}", self.parent_topic, method)
-    }
+    // --- Clock & Time Stepping Controls ---
 
-    // --- Simulation Clock & Stepping ---
-
-    /// Retrieves the current simulation clock type string (e.g. `"steppable"`).
+    /// Queries the simulation clock type (e.g. "Steppable", "RealTime").
     pub fn get_sim_clock_type(&self) -> Result<String> {
-        self.client
-            .request(&self.topic("GetSimClockType"), &EmptyParams {})
+        self.client.runtime().block_on(self.inner.get_sim_clock_type())
     }
 
-    /// Retrieves the current simulation clock time in nanoseconds.
+    /// Retrieves current simulation time in nanoseconds.
     pub fn get_sim_time(&self) -> Result<i64> {
-        self.client
-            .request(&self.topic("GetSimTime"), &EmptyParams {})
+        self.client.runtime().block_on(self.inner.get_sim_time())
     }
 
-    /// Pauses simulation execution.
+    /// Pauses physics simulation execution.
     pub fn pause(&self) -> Result<String> {
-        self.client
-            .request(&self.topic("Pause"), &serde_json::json!({ "do_pause": true }))
+        self.client.runtime().block_on(self.inner.pause())
     }
 
-    /// Resumes simulation execution.
+    /// Resumes physics simulation execution.
     pub fn resume(&self) -> Result<String> {
-        self.client.request(
-            &self.topic("Pause"),
-            &serde_json::json!({ "do_pause": false }),
-        )
+        self.client.runtime().block_on(self.inner.resume())
     }
 
-    /// Queries whether the simulation clock is currently paused.
+    /// Checks whether the simulation physics loop is currently paused.
     pub fn is_paused(&self) -> Result<bool> {
-        self.client
-            .request(&self.topic("IsPaused"), &EmptyParams {})
+        self.client.runtime().block_on(self.inner.is_paused())
     }
 
-    /// Advances the simulation clock by a delta duration in nanoseconds.
+    /// Advances physics simulation by `delta_time_nanos` nanoseconds, blocking until finished.
     pub fn continue_for_sim_time(
         &self,
         delta_time_nanos: i64,
         wait_until_complete: bool,
     ) -> Result<i64> {
-        self.client.request(
-            &self.topic("ContinueForSimTime"),
-            &serde_json::json!({
-                "delta_time": delta_time_nanos,
-                "wait_until_complete": wait_until_complete,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .continue_for_sim_time(delta_time_nanos, wait_until_complete),
         )
     }
 
-    /// Asynchronously advances the simulation clock by a delta duration.
+    /// Advances physics simulation by `delta_time_nanos` nanoseconds asynchronously.
     pub fn continue_for_sim_time_async(
         &self,
         delta_time_nanos: i64,
         wait_until_complete: bool,
     ) -> AsyncResult<i64> {
-        self.client.request_async(
-            &self.topic("ContinueForSimTime"),
-            &serde_json::json!({
-                "delta_time": delta_time_nanos,
-                "wait_until_complete": wait_until_complete,
-            }),
-        )
+        let inner = self.inner.clone();
+        self.client.spawn_async(async move {
+            inner
+                .continue_for_sim_time(delta_time_nanos, wait_until_complete)
+                .await
+        })
     }
 
-    /// Steps the simulation clock forward by a specified delta time in seconds.
+    /// Steps simulation forward by `delta_time_sec` seconds.
     pub fn step(&self, delta_time_sec: f64) -> Result<i64> {
-        let nanos = (delta_time_sec * 1e9) as i64;
-        self.continue_for_sim_time(nanos, true)
+        self.client
+            .runtime()
+            .block_on(self.inner.step(delta_time_sec))
     }
 
-    /// Advances the simulation clock until the target simulation time in nanoseconds is reached.
+    /// Advances simulation until absolute timestamp `target_time_nanos` is reached.
     pub fn continue_until_sim_time(
         &self,
         target_time_nanos: i64,
         wait_until_complete: bool,
     ) -> Result<i64> {
-        self.client.request(
-            &self.topic("ContinueUntilSimTime"),
-            &serde_json::json!({
-                "target_time": target_time_nanos,
-                "wait_until_complete": wait_until_complete,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .continue_until_sim_time(target_time_nanos, wait_until_complete),
         )
     }
 
-    /// Advances the simulation clock by a specified number of discrete steps.
+    /// Advances simulation by exactly `n_steps` physics steps.
     pub fn continue_for_n_steps(
         &self,
         n_steps: i32,
         wait_until_complete: bool,
     ) -> Result<i64> {
-        self.client.request(
-            &self.topic("ContinueForNSteps"),
-            &serde_json::json!({
-                "n_steps": n_steps,
-                "wait_until_complete": wait_until_complete,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .continue_for_n_steps(n_steps, wait_until_complete),
         )
     }
 
-    /// Advances the simulation clock by a single step.
+    /// Advances simulation by a single step.
     pub fn continue_for_single_step(&self, wait_until_complete: bool) -> Result<i64> {
-        self.client.request(
-            &self.topic("ContinueForSingleStep"),
-            &serde_json::json!({
-                "wait_until_complete": wait_until_complete,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.continue_for_single_step(wait_until_complete))
     }
 
-    // --- Voxel Grid Extraction & .binvox Export ---
-
-    /// Generates a 3D boolean voxel occupancy grid for the specified volume.
-    ///
-    /// Optionally writes the resulting voxel map to a `.binvox` file on disk.
+    /// Generates and exports a 3D occupancy voxel grid from scene geometry.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_voxel_grid(
         &self,
         position: Pose,
@@ -250,273 +167,201 @@ impl World {
         write_file: bool,
         file_path: Option<&str>,
     ) -> Result<Vec<bool>> {
-        let transform = Transform::new(position.position, position.orientation);
-        let voxels: Vec<bool> = self.client.request(
-            &self.topic("createVoxelGrid"),
-            &serde_json::json!({
-                "position": transform,
-                "x_size": x_size,
-                "y_size": y_size,
-                "z_size": z_size,
-                "res": resolution,
-                "actors_to_ignore": actors_to_ignore,
-            }),
-        )?;
-
-        if write_file {
-            let path = file_path.unwrap_or("./voxel_grid.binvox");
-            write_binvox(&voxels, x_size, y_size, z_size, resolution, path).map_err(|e| {
-                SimError::SerializationError(format!("Failed to write binvox file '{path}': {e}"))
-            })?;
-        }
-
-        Ok(voxels)
+        self.client.runtime().block_on(self.inner.create_voxel_grid(
+            position,
+            x_size,
+            y_size,
+            z_size,
+            resolution,
+            actors_to_ignore,
+            write_file,
+            file_path,
+        ))
     }
 
-    // --- Environment, Lighting & Weather ---
+    // --- Weather & Atmosphere Controls ---
 
-    /// Sets sunlight intensity in the simulation scene.
+    /// Sets directional sunlight illumination intensity.
     pub fn set_sunlight_intensity(&self, intensity: f32) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetSunLightIntensity"),
-            &serde_json::json!({ "intensity": intensity }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_sunlight_intensity(intensity))
     }
 
-    /// Retrieves current sunlight intensity.
+    /// Queries current directional sunlight illumination intensity.
     pub fn get_sunlight_intensity(&self) -> Result<f32> {
         self.client
-            .request(&self.topic("GetSunLightIntensity"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.get_sunlight_intensity())
     }
 
-    /// Sets cloud shadow strength.
+    /// Sets cloud shadow darkening strength [0.0 to 1.0].
     pub fn set_cloud_shadow_strength(&self, strength: f32) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetCloudShadowStrength"),
-            &serde_json::json!({ "strength": strength }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_cloud_shadow_strength(strength))
     }
 
-    /// Retrieves current cloud shadow strength.
+    /// Queries current cloud shadow darkening strength.
     pub fn get_cloud_shadow_strength(&self) -> Result<f32> {
         self.client
-            .request(&self.topic("GetCloudShadowStrength"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.get_cloud_shadow_strength())
     }
 
-    /// Sets global simulation wind velocity in m/s.
+    /// Sets global ambient wind velocity components in m/s (NED frame).
     pub fn set_wind_velocity(&self, v_x: f64, v_y: f64, v_z: f64) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetWindVelocity"),
-            &serde_json::json!({
-                "v_x": v_x,
-                "v_y": v_y,
-                "v_z": v_z,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_wind_velocity(v_x, v_y, v_z))
     }
 
-    /// Convenience wrapper for setting wind velocity from a Vector3.
+    /// Sets global wind vector directly.
     pub fn set_wind(&self, wind: Vector3) -> Result<bool> {
-        self.set_wind_velocity(wind.x, wind.y, wind.z)
+        self.client.runtime().block_on(self.inner.set_wind(wind))
     }
 
-    /// Retrieves current wind velocity in m/s.
+    /// Queries global ambient wind velocity in m/s (NED frame).
     pub fn get_wind_velocity(&self) -> Result<Vector3> {
-        let val: serde_json::Value = self
-            .client
-            .request(&self.topic("GetWindVelocity"), &EmptyParams {})?;
-
-        if let Some(arr) = val.as_array() {
-            if arr.len() >= 3 {
-                return Ok(Vector3::new(
-                    arr[0].as_f64().unwrap_or(0.0),
-                    arr[1].as_f64().unwrap_or(0.0),
-                    arr[2].as_f64().unwrap_or(0.0),
-                ));
-            }
-        }
-        serde_json::from_value(val).map_err(|e| {
-            SimError::SerializationError(format!("Failed to parse wind velocity: {e}"))
-        })
+        self.client
+            .runtime()
+            .block_on(self.inner.get_wind_velocity())
     }
 
-    /// Convenience alias for `get_wind_velocity`.
+    /// Queries global wind vector directly.
     pub fn get_wind(&self) -> Result<Vector3> {
-        self.get_wind_velocity()
+        self.client.runtime().block_on(self.inner.get_wind())
     }
 
-    /// Enables weather visual effects.
+    /// Enables volumetric visual weather particle systems (rain, snow, fog, dust).
     pub fn enable_weather_visual_effects(&self) -> Result<bool> {
-        self.client.request(
-            &self.topic("SimSetWeatherVisualEffectsStatus"),
-            &serde_json::json!({ "status": true }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.enable_weather_visual_effects())
     }
 
-    /// Disables weather visual effects.
+    /// Disables volumetric visual weather particle systems.
     pub fn disable_weather_visual_effects(&self) -> Result<bool> {
-        self.client.request(
-            &self.topic("SimSetWeatherVisualEffectsStatus"),
-            &serde_json::json!({ "status": false }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.disable_weather_visual_effects())
     }
 
-    /// Resets all weather effects to default values.
+    /// Resets all visual weather effect parameters to default clear-sky settings.
     pub fn reset_weather_effects(&self) -> Result<bool> {
         self.client
-            .request(&self.topic("ResetWeatherEffects"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.reset_weather_effects())
     }
 
-    /// Sets a specific weather visual effect parameter.
+    /// Adjusts intensity of a specific weather effect.
     pub fn set_weather_visual_effects_param(
         &self,
         param: WeatherParameter,
         value: f32,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetWeatherVisualEffectsParameter"),
-            &serde_json::json!({
-                "param": param as i32,
-                "value": value,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_weather_visual_effects_param(param, value))
     }
 
-    /// Retrieves current weather visual effects parameters.
+    /// Queries all current weather effect intensity values.
     pub fn get_weather_visual_effects_param(&self) -> Result<serde_json::Value> {
         self.client
-            .request(&self.topic("GetWeatherVisualEffectsParameter"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.get_weather_visual_effects_param())
     }
 
-    /// Sets time of day and sun position parameters.
+    /// Sets the simulation time of day and solar celestial positioning.
     pub fn set_time_of_day(&self, config: &TimeOfDay) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetTimeOfDay"),
-            &serde_json::json!({
-                "status": config.enabled,
-                "datetime": config.datetime,
-                "is_dst": config.is_dst,
-                "clock_speed": config.clock_speed,
-                "update_interval": config.update_interval,
-                "move_sun": config.move_sun,
-            }),
-        )
-    }
-
-    /// Retrieves current time of day configuration.
-    pub fn get_time_of_day(&self) -> Result<serde_json::Value> {
         self.client
-            .request(&self.topic("GetTimeOfDay"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.set_time_of_day(config))
     }
 
-    /// Sets celestial sun position based on a date-time string.
+    /// Queries current time of day configuration.
+    pub fn get_time_of_day(&self) -> Result<serde_json::Value> {
+        self.client.runtime().block_on(self.inner.get_time_of_day())
+    }
+
+    /// Sets solar celestial position based on calendar date/time string and daylight savings flag.
     pub fn set_sun_position_from_date_time(
         &self,
         date_time: &str,
         is_dst: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetSunPositionFromDateTime"),
-            &serde_json::json!({
-                "date_time": date_time,
-                "is_dst": is_dst,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .set_sun_position_from_date_time(date_time, is_dst),
         )
     }
 
-    /// Switches active streaming view.
+    /// Cycles the active viewport streaming camera view.
     pub fn switch_streaming_view(&self) -> Result<bool> {
         self.client
-            .request(&self.topic("SwitchStreamingView"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.switch_streaming_view())
     }
 
-    // --- Object Spawning & Lifecycle ---
+    // --- Scene Objects & Assets ---
 
-    /// Lists all actor entities in the current scene.
+    /// Lists names of all simulation actors currently instantiated in the level.
     pub fn list_actors(&self) -> Result<Vec<String>> {
-        self.client
-            .request(&self.topic("ListActors"), &EmptyParams {})
+        self.client.runtime().block_on(self.inner.list_actors())
     }
 
-    /// Lists objects in the scene matching a regex filter.
+    /// Searches for scene objects matching a regex pattern.
     pub fn list_objects(&self, name_regex: &str) -> Result<Vec<String>> {
-        self.client.request(
-            &self.topic("ListObjects"),
-            &serde_json::json!({ "name": name_regex }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.list_objects(name_regex))
     }
 
-    /// Lists assets available in the simulation matching a regex filter.
+    /// Searches for spawnable asset templates matching a regex pattern.
     pub fn list_assets(&self, name_regex: &str) -> Result<Vec<String>> {
-        self.client.request(
-            &self.topic("ListAssets"),
-            &serde_json::json!({ "name": name_regex }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.list_assets(name_regex))
     }
 
-    /// Retrieves the 6-DoF pose of a named scene object.
+    /// Retrieves world pose for a named object.
     pub fn get_object_pose(&self, object_name: &str) -> Result<Pose> {
-        self.client.request(
-            &self.topic("GetObjectPose"),
-            &serde_json::json!({ "object_name": object_name }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.get_object_pose(object_name))
     }
 
-    /// Retrieves poses for multiple named scene objects in a single batch request.
+    /// Retrieves world poses for multiple named objects in a single batch query.
     pub fn get_object_poses(&self, object_names: &[String]) -> Result<Vec<Pose>> {
-        self.client.request(
-            &self.topic("GetObjectPoses"),
-            &serde_json::json!({ "object_names": object_names }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.get_object_poses(object_names))
     }
 
-    /// Sets the pose of a named scene object, optionally teleporting without physics collision.
+    /// Updates the world pose of an existing scene object.
     pub fn set_object_pose(
         &self,
         object_name: &str,
         pose: Pose,
         teleport: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetObjectPose"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "pose": pose,
-                "teleport": teleport,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_object_pose(object_name, pose, teleport))
     }
 
-    /// Retrieves the 3D scale vector of a named scene object.
+    /// Queries the 3D scale multipliers [x, y, z] of a scene object.
     pub fn get_object_scale(&self, object_name: &str) -> Result<Vector3> {
-        let val: serde_json::Value = self.client.request(
-            &self.topic("GetObjectScale"),
-            &serde_json::json!({ "object_name": object_name }),
-        )?;
-
-        if let Some(arr) = val.as_array() {
-            if arr.len() >= 3 {
-                return Ok(Vector3::new(
-                    arr[0].as_f64().unwrap_or(1.0),
-                    arr[1].as_f64().unwrap_or(1.0),
-                    arr[2].as_f64().unwrap_or(1.0),
-                ));
-            }
-        }
-        serde_json::from_value(val).map_err(|e| {
-            SimError::SerializationError(format!("Failed to parse object scale: {e}"))
-        })
+        self.client
+            .runtime()
+            .block_on(self.inner.get_object_scale(object_name))
     }
 
-    /// Sets the 3D scale of a named scene object.
+    /// Sets the 3D scale multipliers of a scene object.
     pub fn set_object_scale(&self, object_name: &str, scale: Vector3) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetObjectScale"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "scale": [scale.x as f32, scale.y as f32, scale.z as f32],
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_object_scale(object_name, scale))
     }
 
     /// Spawns a packaged simulation object asset into the scene.
@@ -528,19 +373,14 @@ impl World {
         scale: Vector3,
         enable_physics: bool,
     ) -> Result<String> {
-        self.client.request(
-            &self.topic("SpawnObject"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "asset_path": asset_path,
-                "pose": pose,
-                "scale": [scale.x as f32, scale.y as f32, scale.z as f32],
-                "enable_physics": enable_physics,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .spawn_object(object_name, asset_path, pose, scale, enable_physics),
         )
     }
 
     /// Spawns a mesh/asset from in-memory byte data into the scene.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_object_from_file(
         &self,
         object_name: &str,
@@ -551,21 +391,22 @@ impl World {
         scale: Vector3,
         enable_physics: bool,
     ) -> Result<String> {
-        self.client.request(
-            &self.topic("spawnObjectFromFile"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "file_format": file_format,
-                "byte_array": asset_bytes,
-                "is_binary": is_binary,
-                "pose": pose,
-                "scale": [scale.x as f32, scale.y as f32, scale.z as f32],
-                "enable_physics": enable_physics,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .spawn_object_from_file(
+                    object_name,
+                    file_format,
+                    asset_bytes,
+                    is_binary,
+                    pose,
+                    scale,
+                    enable_physics,
+                ),
         )
     }
 
     /// Spawns a packaged object asset at a specific geographic coordinate.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_object_at_geo(
         &self,
         object_name: &str,
@@ -577,22 +418,23 @@ impl World {
         scale: Vector3,
         enable_physics: bool,
     ) -> Result<String> {
-        self.client.request(
-            &self.topic("spawnObjectAtGeo"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "asset_path": asset_path,
-                "latitude": latitude,
-                "longitude": longitude,
-                "altitude": altitude,
-                "rotation": rotation,
-                "scale": [scale.x as f32, scale.y as f32, scale.z as f32],
-                "enable_physics": enable_physics,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .spawn_object_at_geo(
+                    object_name,
+                    asset_path,
+                    latitude,
+                    longitude,
+                    altitude,
+                    rotation,
+                    scale,
+                    enable_physics,
+                ),
         )
     }
 
     /// Spawns an asset from file bytes at a specific geographic coordinate.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_object_from_file_at_geo(
         &self,
         object_name: &str,
@@ -606,236 +448,169 @@ impl World {
         scale: Vector3,
         enable_physics: bool,
     ) -> Result<String> {
-        self.client.request(
-            &self.topic("spawnObjectFromFileAtGeo"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "file_format": file_format,
-                "byte_array": asset_bytes,
-                "is_binary": is_binary,
-                "latitude": latitude,
-                "longitude": longitude,
-                "altitude": altitude,
-                "rotation": rotation,
-                "scale": [scale.x as f32, scale.y as f32, scale.z as f32],
-                "enable_physics": enable_physics,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .spawn_object_from_file_at_geo(
+                    object_name,
+                    file_format,
+                    asset_bytes,
+                    is_binary,
+                    latitude,
+                    longitude,
+                    altitude,
+                    rotation,
+                    scale,
+                    enable_physics,
+                ),
         )
     }
 
-    /// Destroys a named scene object.
+    /// Deletes a spawned object from the scene.
     pub fn destroy_object(&self, object_name: &str) -> Result<bool> {
-        self.client.request(
-            &self.topic("DestroyObject"),
-            &serde_json::json!({ "object_name": object_name }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.destroy_object(object_name))
     }
 
-    /// Destroys all spawned temporary objects in the scene.
+    /// Deletes all dynamically spawned objects from the scene.
     pub fn destroy_all_spawned_objects(&self) -> Result<bool> {
         self.client
-            .request(&self.topic("DestroyAllSpawnedObjects"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.destroy_all_spawned_objects())
     }
 
-    // --- Materials, Textures, Lighting & Segmentation ---
-
-    /// Sets the material asset of a named scene object.
+    /// Assigns a named material interface to a scene object.
     pub fn set_object_material(
         &self,
         object_name: &str,
-        material_asset_path: &str,
+        material_name: &str,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetObjectMaterial"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "material_asset_path": material_asset_path,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_object_material(object_name, material_name))
     }
 
-    /// Downloads and applies an object texture from a URL.
+    /// Downloads and applies a texture from an HTTP(S) URL to an object's material.
     pub fn set_object_texture_from_url(&self, object_name: &str, url: &str) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetObjectTextureFromUrl"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "url": url,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_object_texture_from_url(object_name, url))
     }
 
-    /// Applies an object texture from a local filesystem image file.
+    /// Applies an image file from local disk as a material texture.
     pub fn set_object_texture_from_file(
         &self,
         object_name: &str,
-        texture_file_path: &str,
+        file_path: &str,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetObjectTextureFromFile"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "texture_file_path": texture_file_path,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .set_object_texture_from_file(object_name, file_path),
         )
     }
 
-    /// Applies an object texture from a packaged asset path.
+    /// Applies a packaged project asset as a material texture.
     pub fn set_object_texture_from_packaged_asset(
         &self,
         object_name: &str,
-        texture_asset_path: &str,
+        asset_path: &str,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetObjectTextureFromPackagedAsset"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "texture_asset_path": texture_asset_path,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .set_object_texture_from_packaged_asset(object_name, asset_path),
         )
     }
 
-    /// Swaps the active texture of tagged actors to a specific texture ID.
+    /// Swaps the active texture variation for an actor identified by tag.
     pub fn swap_object_texture(&self, tag: &str, tex_id: i32) -> Result<bool> {
-        self.client.request(
-            &self.topic("SwapObjectTexture"),
-            &serde_json::json!({
-                "tag": tag,
-                "tex_id": tex_id,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.swap_object_texture(tag, tex_id))
     }
 
-    /// Sets the light intensity of a light actor object.
+    /// Sets luminous intensity for a light actor.
     pub fn set_light_object_intensity(
         &self,
         object_name: &str,
-        new_intensity: f32,
+        intensity: f32,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetLightObjectIntensity"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "new_intensity": new_intensity,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .set_light_object_intensity(object_name, intensity),
         )
     }
 
-    /// Sets the emission color of a light actor object.
+    /// Sets light emission color for a light actor.
     pub fn set_light_object_color(
         &self,
         object_name: &str,
         color_rgb: [f32; 3],
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetLightObjectColor"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "color_rgb": color_rgb,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_light_object_color(object_name, color_rgb))
     }
 
-    /// Sets the light attenuation radius of a light actor object.
+    /// Sets illumination attenuation radius for a point or spot light actor.
     pub fn set_light_object_radius(&self, object_name: &str, new_radius: f32) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetLightObjectRadius"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "new_radius": new_radius,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_light_object_radius(object_name, new_radius))
     }
 
-    /// Assigns a segmentation class ID to a mesh.
+    /// Assigns semantic segmentation label IDs to meshes matching a name.
     pub fn set_segmentation_id_by_name(
         &self,
         mesh_name: &str,
-        segmentation_id: i32,
+        seg_id: i32,
         is_name_regex: bool,
         use_owner_name: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetSegmentationIDByName"),
-            &serde_json::json!({
-                "mesh_name": mesh_name,
-                "segmentation_id": segmentation_id,
-                "is_name_regex": is_name_regex,
-                "use_owner_name": use_owner_name,
-            }),
+        self.client.runtime().block_on(
+            self.inner
+                .set_segmentation_id_by_name(mesh_name, seg_id, is_name_regex, use_owner_name),
         )
     }
 
-    /// Retrieves the segmentation class ID assigned to a mesh.
+    /// Queries the semantic segmentation class ID assigned to a mesh.
     pub fn get_segmentation_id_by_name(
         &self,
         mesh_name: &str,
         use_owner_name: bool,
     ) -> Result<i32> {
-        self.client.request(
-            &self.topic("GetSegmentationIDByName"),
-            &serde_json::json!({
-                "mesh_name": mesh_name,
-                "use_owner_name": use_owner_name,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.get_segmentation_id_by_name(mesh_name, use_owner_name))
     }
 
-    /// Retrieves the full mapping of segmentation names to integer IDs.
+    /// Retrieves the complete mapping of mesh names to segmentation IDs.
     pub fn get_segmentation_id_map(&self) -> Result<serde_json::Value> {
         self.client
-            .request(&self.topic("GetSegmentationIDMap"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.get_segmentation_id_map())
     }
 
     // --- Trajectories & Spatial Queries ---
 
     /// Imports a 6-DoF NED trajectory for playback by actors or robot vehicles.
-    pub fn import_ned_trajectory(&self, mut trajectory: NEDTrajectory) -> Result<bool> {
-        trajectory.auto_fill_missing();
-        self.client.request(
-            &self.topic("ImportNEDTrajectory"),
-            &serde_json::json!({
-                "traj_name": trajectory.traj_name,
-                "time": trajectory.time,
-                "pose_x": trajectory.pose_x,
-                "pose_y": trajectory.pose_y,
-                "pose_z": trajectory.pose_z,
-                "pose_roll": trajectory.pose_roll,
-                "pose_pitch": trajectory.pose_pitch,
-                "pose_yaw": trajectory.pose_yaw,
-                "vel_x_lin": trajectory.vel_lin_x,
-                "vel_y_lin": trajectory.vel_lin_y,
-                "vel_z_lin": trajectory.vel_lin_z,
-            }),
-        )
+    pub fn import_ned_trajectory(&self, trajectory: NEDTrajectory) -> Result<bool> {
+        self.client
+            .runtime()
+            .block_on(self.inner.import_ned_trajectory(trajectory))
     }
 
     /// Imports a geographic coordinate trajectory for playback by actors.
     pub fn import_geo_trajectory(&self, trajectory: GeoTrajectory) -> Result<bool> {
-        self.client.request(
-            &self.topic("ImportGeoTrajectory"),
-            &serde_json::json!({
-                "traj_name": trajectory.traj_name,
-                "time": trajectory.time,
-                "latitudes": trajectory.latitudes,
-                "longitudes": trajectory.longitudes,
-                "altitudes": trajectory.altitudes,
-                "roll": trajectory.roll,
-                "pitch": trajectory.pitch,
-                "yaw": trajectory.yaw,
-                "vel_lin_x": trajectory.vel_lin_x,
-                "vel_lin_y": trajectory.vel_lin_y,
-                "vel_lin_z": trajectory.vel_lin_z,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.import_geo_trajectory(trajectory))
     }
 
     /// Queries the ground surface elevation (Z in NED) at a specified (X, Y) coordinate.
     pub fn get_surface_elevation_at_point(&self, x: f32, y: f32) -> Result<f32> {
-        self.client.request(
-            &self.topic("GetSurfaceElevationAtPoint"),
-            &serde_json::json!({ "x": x, "y": y }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.get_surface_elevation_at_point(x, y))
     }
 
     /// Computes the 3D bounding box for an object aligned to either world or object coordinates.
@@ -844,35 +619,15 @@ impl World {
         object_name: &str,
         box_alignment: BoxAlignment,
     ) -> Result<serde_json::Value> {
-        self.client.request(
-            &self.topic("Get3DBoundingBox"),
-            &serde_json::json!({
-                "object_name": object_name,
-                "box_alignment": box_alignment as i32,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.get_3d_bounding_box(object_name, box_alignment))
     }
 
     /// Casts a ray along the forward X axis of the given pose and returns the 3D hit point,
     /// or NaN coordinates if no geometry was intersected.
     pub fn hit_test(&self, pose: Pose) -> Result<Vector3> {
-        let transform = Transform::new(pose.position, pose.orientation);
-        let val: serde_json::Value = self.client.request(
-            &self.topic("HitTest"),
-            &serde_json::json!({ "pose": transform }),
-        )?;
-
-        if let Some(arr) = val.as_array() {
-            if arr.len() >= 3 {
-                return Ok(Vector3::new(
-                    arr[0].as_f64().unwrap_or(f64::NAN),
-                    arr[1].as_f64().unwrap_or(f64::NAN),
-                    arr[2].as_f64().unwrap_or(f64::NAN),
-                ));
-            }
-        }
-        serde_json::from_value(val)
-            .map_err(|e| SimError::SerializationError(format!("Failed to parse hit test: {e}")))
+        self.client.runtime().block_on(self.inner.hit_test(pose))
     }
 
     // --- Debug Visualizations & Markers ---
@@ -880,10 +635,12 @@ impl World {
     /// Flushes all persistent debug visual markers from the simulator.
     pub fn flush_persistent_markers(&self) -> Result<bool> {
         self.client
-            .request(&self.topic("debugFlushPersistentMarkers"), &EmptyParams {})
+            .runtime()
+            .block_on(self.inner.flush_persistent_markers())
     }
 
     /// Plots directional arrows in the simulation world for visual debugging.
+    #[allow(clippy::too_many_arguments)]
     pub fn plot_debug_arrows(
         &self,
         points_start: &[Vector3],
@@ -894,18 +651,15 @@ impl World {
         sec_duration: f32,
         is_persistent: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("debugPlotArrows"),
-            &serde_json::json!({
-                "points_start": points_start,
-                "points_end": points_end,
-                "color_rgba": color_rgba,
-                "thickness": thickness,
-                "arrow_size": arrow_size,
-                "duration": sec_duration,
-                "is_persistent": is_persistent,
-            }),
-        )
+        self.client.runtime().block_on(self.inner.plot_debug_arrows(
+            points_start,
+            points_end,
+            color_rgba,
+            thickness,
+            arrow_size,
+            sec_duration,
+            is_persistent,
+        ))
     }
 
     /// Plots dashed line segments between consecutive points.
@@ -917,16 +671,13 @@ impl World {
         sec_duration: f32,
         is_persistent: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("debugPlotDashedLine"),
-            &serde_json::json!({
-                "points": points,
-                "color_rgba": color_rgba,
-                "thickness": thickness,
-                "duration": sec_duration,
-                "is_persistent": is_persistent,
-            }),
-        )
+        self.client.runtime().block_on(self.inner.plot_debug_dashed_line(
+            points,
+            color_rgba,
+            thickness,
+            sec_duration,
+            is_persistent,
+        ))
     }
 
     /// Plots point markers in 3D space.
@@ -938,16 +689,13 @@ impl World {
         sec_duration: f32,
         is_persistent: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("debugPlotPoints"),
-            &serde_json::json!({
-                "points": points,
-                "color_rgba": color_rgba,
-                "size": size,
-                "duration": sec_duration,
-                "is_persistent": is_persistent,
-            }),
-        )
+        self.client.runtime().block_on(self.inner.plot_debug_points(
+            points,
+            color_rgba,
+            size,
+            sec_duration,
+            is_persistent,
+        ))
     }
 
     /// Plots connected solid line segments through the given vertices.
@@ -959,16 +707,13 @@ impl World {
         sec_duration: f32,
         is_persistent: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("debugPlotSolidLine"),
-            &serde_json::json!({
-                "points": points,
-                "color_rgba": color_rgba,
-                "thickness": thickness,
-                "duration": sec_duration,
-                "is_persistent": is_persistent,
-            }),
-        )
+        self.client.runtime().block_on(self.inner.plot_debug_solid_line(
+            points,
+            color_rgba,
+            thickness,
+            sec_duration,
+            is_persistent,
+        ))
     }
 
     /// Renders text strings at designated world positions.
@@ -980,16 +725,13 @@ impl World {
         color_rgba: ColorRGBA,
         sec_duration: f32,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("debugPlotStrings"),
-            &serde_json::json!({
-                "strings": strings,
-                "positions": positions,
-                "scale": scale,
-                "color_rgba": color_rgba,
-                "duration": sec_duration,
-            }),
-        )
+        self.client.runtime().block_on(self.inner.plot_debug_strings(
+            strings,
+            positions,
+            scale,
+            color_rgba,
+            sec_duration,
+        ))
     }
 
     /// Draws coordinate frame coordinate triads at specified poses.
@@ -1001,19 +743,17 @@ impl World {
         sec_duration: f32,
         is_persistent: bool,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("debugPlotTransforms"),
-            &serde_json::json!({
-                "poses": poses,
-                "scale": scale,
-                "thickness": thickness,
-                "duration": sec_duration,
-                "is_persistent": is_persistent,
-            }),
-        )
+        self.client.runtime().block_on(self.inner.plot_debug_transforms(
+            poses,
+            scale,
+            thickness,
+            sec_duration,
+            is_persistent,
+        ))
     }
 
     /// Draws labeled coordinate frame triads at specified poses.
+    #[allow(clippy::too_many_arguments)]
     pub fn plot_debug_transforms_with_names(
         &self,
         poses: &[Pose],
@@ -1024,61 +764,55 @@ impl World {
         text_color_rgba: ColorRGBA,
         sec_duration: f32,
     ) -> Result<bool> {
-        self.client.request(
-            &self.topic("debugPlotTransformsWithNames"),
-            &serde_json::json!({
-                "poses": poses,
-                "names": names,
-                "tf_scale": tf_scale,
-                "tf_thickness": tf_thickness,
-                "text_scale": text_scale,
-                "text_color_rgba": text_color_rgba,
-                "duration": sec_duration,
-            }),
+        self.client.runtime().block_on(
+            self.inner.plot_debug_transforms_with_names(
+                poses,
+                names,
+                tf_scale,
+                tf_thickness,
+                text_scale,
+                text_color_rgba,
+                sec_duration,
+            ),
         )
     }
 
     /// Configures the vehicle trajectory trace line color and thickness.
     pub fn set_trace_line(&self, color_rgba: ColorRGBA, thickness: f32) -> Result<bool> {
-        self.client.request(
-            &self.topic("SetTraceLine"),
-            &serde_json::json!({
-                "color_rgba": color_rgba,
-                "thickness": thickness,
-            }),
-        )
+        self.client
+            .runtime()
+            .block_on(self.inner.set_trace_line(color_rgba, thickness))
     }
 
     /// Toggles trajectory trace line visualization on or off.
     pub fn toggle_trace(&self) -> Result<bool> {
-        self.client
-            .request(&self.topic("ToggleTrace"), &EmptyParams {})
+        self.client.runtime().block_on(self.inner.toggle_trace())
     }
 
     // --- Actor Handles ---
 
     /// Returns a Drone handle attached to this simulation world.
     pub fn get_drone(&self, name: impl Into<String>) -> Drone {
-        Drone::new(self.client.clone(), name, self.parent_topic.clone())
+        Drone::new(self.client.clone(), name, self.inner.parent_topic())
     }
 
     /// Returns a Rover handle attached to this simulation world.
     pub fn get_rover(&self, name: impl Into<String>) -> Rover {
-        Rover::new(self.client.clone(), name, self.parent_topic.clone())
+        Rover::new(self.client.clone(), name, self.inner.parent_topic())
     }
 
     /// Returns a WheeledVehicle handle attached to this simulation world.
     pub fn get_wheeled_vehicle(&self, name: impl Into<String>) -> WheeledVehicle {
-        WheeledVehicle::new(self.client.clone(), name, self.parent_topic.clone())
+        WheeledVehicle::new(self.client.clone(), name, self.inner.parent_topic())
     }
 
     /// Returns an EnvActor handle attached to this simulation world.
     pub fn get_env_actor(&self, name: impl Into<String>) -> EnvActor {
-        EnvActor::new(self.client.clone(), name, self.parent_topic.clone())
+        EnvActor::new(self.client.clone(), name, self.inner.parent_topic())
     }
 
     /// Returns a StaticSensorActor handle attached to this simulation world.
     pub fn get_static_sensor(&self, name: impl Into<String>) -> StaticSensorActor {
-        StaticSensorActor::new(self.client.clone(), name, self.parent_topic.clone())
+        StaticSensorActor::new(self.client.clone(), name, self.inner.parent_topic())
     }
 }

@@ -167,16 +167,18 @@ fn test_blocking_client_cancel_all_requests() {
         Client::connect_with_ports("127.0.0.1", pair_port, rep_port).expect("connect failed");
 
     // Queue up requests
-    let _ar1: AsyncResult<bool> = client.request_async("/Sim/Ping", &serde_json::json!({}));
+    let ar1: AsyncResult<bool> = client.request_async("/Sim/Ping", &serde_json::json!({}));
     let ar2: AsyncResult<bool> = client.request_async("/Sim/Ping", &serde_json::json!({}));
     let ar3: AsyncResult<bool> = client.request_async("/Sim/Ping", &serde_json::json!({}));
 
     // Cancel queued requests
     client.cancel_all_requests();
 
-    // At least the later queued requests get cancelled
+    // The in-flight request completes or cancels, and queued requests get cancelled
+    let _ = ar1.wait();
     let _ = ar2.wait();
     let _ = ar3.wait();
+    assert!(ar1.is_done());
     assert!(ar2.is_done());
     assert!(ar3.is_done());
 

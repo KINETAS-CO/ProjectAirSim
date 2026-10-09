@@ -37,12 +37,22 @@ if [ "$build_type" = "release" ]; then
     cargo_flags+=("--release")
 fi
 
-cargo build --manifest-path "$manifest_path" --all-features "${cargo_flags[@]}"
+echo "Building ProjectAirSim Rust Client (async)..."
+cargo build --manifest-path "$manifest_path" --no-default-features --features async "${cargo_flags[@]}"
+
+echo "Building ProjectAirSim Rust Client (sync)..."
+cargo build --manifest-path "$manifest_path" --no-default-features --features sync "${cargo_flags[@]}"
 
 if "$run_tests"; then
     if cargo nextest --version >/dev/null 2>&1; then
-        CI=1 cargo nextest run --manifest-path "$manifest_path" --all-features "${cargo_flags[@]}"
+        echo "Running async tests with nextest..."
+        CI=1 cargo nextest run --manifest-path "$manifest_path" --no-default-features --features async "${cargo_flags[@]}"
+        echo "Running sync tests with nextest..."
+        CI=1 cargo nextest run --manifest-path "$manifest_path" --no-default-features --features sync "${cargo_flags[@]}"
     else
-        cargo test --manifest-path "$manifest_path" --all-features "${cargo_flags[@]}"
+        echo "Running async tests with cargo test..."
+        cargo test --manifest-path "$manifest_path" --no-default-features --features async "${cargo_flags[@]}"
+        echo "Running sync tests with cargo test..."
+        cargo test --manifest-path "$manifest_path" --no-default-features --features sync "${cargo_flags[@]}"
     fi
 fi

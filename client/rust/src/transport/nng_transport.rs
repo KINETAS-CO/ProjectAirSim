@@ -100,34 +100,28 @@ impl NngTransport {
 
 use super::Transport;
 
-#[cfg_attr(feature = "async", async_trait::async_trait)]
+#[async_trait::async_trait]
 impl Transport for NngTransport {
-    #[cfg(feature = "async")]
     async fn send_request(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
         self.send_request_sync(req_bytes)
     }
 
-    #[cfg(feature = "async")]
     async fn send_topic_frame(&self, frame_bytes: &[u8]) -> Result<()> {
         self.send_topic_frame_sync(frame_bytes)
     }
 
-    #[cfg(feature = "async")]
     async fn recv_topic_frame(&self, timeout_ms: u32) -> Result<Option<Vec<u8>>> {
         self.recv_topic_frame_sync(timeout_ms)
     }
 
-    #[cfg(feature = "sync")]
     fn send_request_sync(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
         self.send_request_sync(req_bytes)
     }
 
-    #[cfg(feature = "sync")]
     fn send_topic_frame_sync(&self, frame_bytes: &[u8]) -> Result<()> {
         self.send_topic_frame_sync(frame_bytes)
     }
 
-    #[cfg(feature = "sync")]
     fn recv_topic_frame_sync(&self, timeout_ms: u32) -> Result<Option<Vec<u8>>> {
         self.recv_topic_frame_sync(timeout_ms)
     }

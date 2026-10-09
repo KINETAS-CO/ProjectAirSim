@@ -88,9 +88,8 @@ impl MockTransport {
     }
 }
 
-#[cfg_attr(feature = "async", async_trait::async_trait)]
+#[async_trait::async_trait]
 impl Transport for MockTransport {
-    #[cfg(feature = "async")]
     async fn send_request(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
         self.inner
             .sent_requests
@@ -107,7 +106,6 @@ impl Transport for MockTransport {
         })
     }
 
-    #[cfg(feature = "async")]
     async fn send_topic_frame(&self, frame_bytes: &[u8]) -> Result<()> {
         self.inner
             .sent_topic_frames
@@ -117,7 +115,6 @@ impl Transport for MockTransport {
         Ok(())
     }
 
-    #[cfg(feature = "async")]
     async fn recv_topic_frame(&self, _timeout_ms: u32) -> Result<Option<Vec<u8>>> {
         let mut queue = self
             .inner
@@ -127,7 +124,6 @@ impl Transport for MockTransport {
         Ok(queue.pop_front())
     }
 
-    #[cfg(feature = "sync")]
     fn send_request_sync(&self, req_bytes: &[u8]) -> Result<Vec<u8>> {
         self.inner
             .sent_requests
@@ -144,7 +140,6 @@ impl Transport for MockTransport {
         })
     }
 
-    #[cfg(feature = "sync")]
     fn send_topic_frame_sync(&self, frame_bytes: &[u8]) -> Result<()> {
         self.inner
             .sent_topic_frames
@@ -154,7 +149,6 @@ impl Transport for MockTransport {
         Ok(())
     }
 
-    #[cfg(feature = "sync")]
     fn recv_topic_frame_sync(&self, _timeout_ms: u32) -> Result<Option<Vec<u8>>> {
         let mut queue = self
             .inner

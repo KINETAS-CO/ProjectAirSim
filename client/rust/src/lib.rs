@@ -4,6 +4,16 @@
 //! to connect to ProjectAirSim's simulation server over NNG.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+#[cfg(all(feature = "async", feature = "sync"))]
+compile_error!(
+    "Features 'async' and 'sync' are mutually exclusive. Please enable either 'async' or 'sync', not both."
+);
+
+#[cfg(not(any(feature = "async", feature = "sync")))]
+compile_error!(
+    "Either feature 'async' or 'sync' must be enabled. Default is 'async'."
+);
+
 pub mod config;
 pub mod error;
 pub mod logging;
@@ -13,7 +23,7 @@ pub mod types;
 
 pub use logging::{clear_log_sink, has_log_sink, init_logging, set_log_sink, LogSink, Severity};
 
-#[cfg(feature = "async")]
+#[cfg(any(feature = "async", feature = "sync"))]
 pub mod async_api;
 
 #[cfg(feature = "sync")]
@@ -36,5 +46,5 @@ pub use async_api::{
 #[cfg(feature = "sync")]
 pub use blocking::AsyncResult;
 
-#[cfg(all(feature = "sync", not(feature = "async")))]
+#[cfg(feature = "sync")]
 pub use blocking::{Client, Drone, EnvActor, Rover, StaticSensorActor, WheeledVehicle, World};

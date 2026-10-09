@@ -8,8 +8,7 @@ license = "MIT"
 [features]
 default = ["async"]
 async = ["dep:tokio", "dep:futures-util", "dep:async-trait"]
-sync = []
-full = ["async", "sync"]
+sync = ["dep:tokio", "dep:futures-util", "dep:async-trait"]
 
 [dependencies]
 # Transport (nng-rs)
@@ -25,9 +24,10 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
-# Async dependencies (default)
+# Async / Tokio runtime dependencies
 tokio = { version = "1.36", features = [
     "rt",
+    "rt-multi-thread",
     "sync",
     "time",
     "macros",

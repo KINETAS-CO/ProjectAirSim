@@ -19,10 +19,11 @@ The library includes these features:
 
 ## Features in Cargo
 
-The crate defines three features in `Cargo.toml`:
+The crate defines two mutually exclusive execution features in `Cargo.toml`:
 - `async`: This feature is the default. It enables the Tokio asynchronous client.
 - `sync`: This feature enables the blocking client.
-- `full`: This feature enables both asynchronous and synchronous interfaces.
+
+Note: `async` and `sync` cannot be enabled at the same time. The crate validates this at compile time.
 
 ## Installation
 
@@ -74,6 +75,13 @@ cargo run --example sync_drone_flight --features sync
 You can build and test the client without a running simulation server.
 The repository includes mock transports for hermetic tests.
 
-1. To build the client library, run `cargo build --all-features`.
-2. To run the test suite, run `./build_rust_client.sh debug --tests`.
-3. To test code cleanliness, run `cargo clippy --all-targets --all-features -- -D warnings`.
+1. To build the client library:
+   - Async mode: `cargo build --no-default-features --features async`
+   - Sync mode: `cargo build --no-default-features --features sync`
+2. To run the test suite with **`cargo-nextest`** (recommended):
+   - Async tests: `cargo nextest run --no-default-features --features async`
+   - Sync tests: `cargo nextest run --no-default-features --features sync`
+   - Using the helper script: `./build_rust_client.sh debug --tests` (or `build_rust_client.cmd debug --tests`)
+3. To test code cleanliness:
+   - Async: `cargo clippy --all-targets --no-default-features --features async -- -D warnings`
+   - Sync: `cargo clippy --all-targets --no-default-features --features sync -- -D warnings`
