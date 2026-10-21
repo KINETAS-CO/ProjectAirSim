@@ -1,0 +1,20 @@
+# Nextest configuration for ProjectAirSim Rust Client
+# Documentation: https://nexte.st/book/configuration.html
+
+[profile.default]
+# Print failed test output immediately
+failure-output = "immediate"
+
+# Flag slow tests and terminate after timeout period
+slow-timeout = { period = "15s", terminate-after = 3 }
+
+# Limit test threads to avoid ephemeral socket / port collisions during parallel execution
+test-threads = 4
+
+# Retry configuration for flaky socket binding if needed
+retries = 0
+
+[profile.ci]
+failure-output = "immediate"
+slow-timeout = { period = "20s", terminate-after = 3 }
+status-level = "all"

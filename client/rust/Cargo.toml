@@ -1,0 +1,86 @@
+[package]
+name = "projectairsim"
+version = "0.1.0"
+edition = "2021"
+description = "Native Rust client for ProjectAirSim simulation server"
+license = "MIT"
+
+[features]
+default = ["async"]
+async = ["dep:tokio", "dep:futures-util", "dep:async-trait"]
+sync = ["dep:tokio", "dep:futures-util", "dep:async-trait"]
+
+[dependencies]
+# Transport (nng-rs)
+nng = "1.0"
+
+# Wire protocol & Serialization (always included)
+rmp-serde = "1.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_bytes = "0.11"
+byteorder = "1.5"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Async / Tokio runtime dependencies
+tokio = { version = "1.36", features = [
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "macros",
+], optional = true }
+futures-util = { version = "0.3", optional = true }
+async-trait = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.36", features = ["full"] }
+tempfile = "3.10"
+rmpv = { version = "1.3", features = ["with-serde"] }
+
+[[example]]
+name = "async_drone_flight"
+required-features = ["async"]
+
+[[example]]
+name = "sync_drone_flight"
+required-features = ["sync"]
+
+[[example]]
+name = "hello_drone"
+required-features = ["async"]
+
+[[example]]
+name = "hello_wheeled_vehicle"
+required-features = ["async"]
+
+[[example]]
+name = "user_rover_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_env_actor_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_static_sensor_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_lidar_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "user_radar_scenario"
+required-features = ["async"]
+
+[[example]]
+name = "two_drones_flight"
+required-features = ["async"]
+
+[[example]]
+name = "world_debug_plots"
+required-features = ["async"]
+
